@@ -1,0 +1,22 @@
+.foo[value='.asdasd'] {
+	background-color: red;
+	margin: 10px;
+}
+
+.bar.foo .wow {
+	background-color: green;
+}
+
+.aaa {
+	color: black;
+}
+
+@media (min-width: 30em) and (orientation: landscape) {
+	.aaa {
+		color: green;
+	}
+
+	.bbb {
+		color: green;
+	}
+}
