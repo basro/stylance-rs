@@ -4,8 +4,12 @@ use stylance::import_style;
 
 use crate::module::style;
 
-import_style!(style1, "examples/usage/style1.scss");
+import_style!(style2, "examples/usage/style2.scss");
 
 fn main() {
-    println!("{},{},{}", style1::bar, style1::foo, style::baaa)
+    import_style!(style3, "examples/usage/style1.scss");
+
+    use style3 as stl;
+
+    println!("{},{},{}", stl::foo, style2::baaa, style::bar)
 }

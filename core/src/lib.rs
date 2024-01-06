@@ -4,7 +4,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs,
     hash::{Hash as _, Hasher as _},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::anyhow;
@@ -24,7 +24,7 @@ fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
     let manifest_dir = manifest_dir.canonicalize()?;
     let css_file = css_file.canonicalize()?;
 
-    let mut relative_path_str = css_file.strip_prefix(manifest_dir)?.to_string_lossy();
+    let relative_path_str = css_file.strip_prefix(manifest_dir)?.to_string_lossy();
 
     #[cfg(target_os = "windows")]
     let relative_path_str = relative_path_str.replace('\\', "/");
@@ -62,12 +62,13 @@ pub fn load_and_modify_css(manifest_dir: &Path, css_file: &Path) -> anyhow::Resu
     Ok(new_file)
 }
 
-pub fn get_classes(manifest_dir: &Path, css_file: &Path) -> Result<(String, Vec<Class>), ()> {
-    let hash_str = make_hash(manifest_dir, css_file).map_err(|_| ())?;
+pub fn get_classes(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<(String, Vec<Class>)> {
+    let hash_str = make_hash(manifest_dir, css_file)?;
 
-    let css_file_contents = fs::read_to_string(css_file).map_err(|_| ())?;
+    let css_file_contents = fs::read_to_string(css_file)?;
 
-    let mut classes = parse::get_css_classes(&css_file_contents).map_err(|_| ())?;
+    let mut classes = parse::get_css_classes(&css_file_contents)
+        .map_err(|_| anyhow!("Failed to parse css file"))?;
 
     classes.sort();
     classes.dedup();

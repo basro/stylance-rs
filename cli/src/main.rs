@@ -1,8 +1,4 @@
-use std::{
-    fs::{self, File},
-    io::Write,
-    path::PathBuf,
-};
+use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
 use walkdir::WalkDir;
@@ -18,9 +14,6 @@ struct Cli {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-
-    println!("yep");
-    // Iterate over the directory and its subdirectories
 
     let mut modified_css_files = Vec::new();
 

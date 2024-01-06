@@ -31,14 +31,14 @@ impl Parse for ImportStyleInput {
 }
 
 #[proc_macro]
-pub fn import_style(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ImportStyleInput);
+pub fn import_style_classes(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as LitStr);
 
     let manifest_dir_env = env::var_os("CARGO_MANIFEST_DIR").expect("we need CARGO_MANIFEST_DIR");
     let manifest_path = Path::new(&manifest_dir_env);
-    let file_path = manifest_path.join(Path::new(&input.style_path));
+    let file_path = manifest_path.join(Path::new(&input.value()));
 
-    let (hash_str, classes) = core::get_classes(manifest_path, &file_path).expect("Load classes");
+    let (_, classes) = core::get_classes(manifest_path, &file_path).expect("Load classes");
 
     let binding = file_path.canonicalize().unwrap();
     let full_path = binding.to_string_lossy();
@@ -48,8 +48,6 @@ pub fn import_style(input: TokenStream) -> TokenStream {
         .map(|class| Ident::new(&class.original_name.replace('-', "_"), Span::call_site()))
         .collect::<Vec<_>>();
 
-    let struct_ident = Ident::new(&format!("Style{hash_str}"), Span::call_site());
-
     let output_fields = classes.iter().zip(identifiers).map(|(class, class_ident)| {
         let class_str = &class.hashed_name;
         quote! {
@@ -58,20 +56,9 @@ pub fn import_style(input: TokenStream) -> TokenStream {
         }
     });
 
-    let style_ident = input.style_ident;
-
-    let pub_slot = if input.is_pub {
-        quote! { pub }
-    } else {
-        quote! {}
-    };
-
     quote! {
         const _ : &[u8] = include_bytes!(#full_path);
-
-        #pub_slot mod #style_ident {
-            #(#output_fields )*
-        }
+        #(#output_fields )*
     }
     .into()
 }
