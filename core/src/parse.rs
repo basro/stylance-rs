@@ -6,7 +6,24 @@ use winnow::{
     PResult, Parser,
 };
 
-pub fn get_css_classes(input: &str) -> Result<Vec<&str>, ParseError<&str, ContextError>> {
+/// ```text
+///         v----v inner span
+/// :global(.class)
+/// ^-------------^ outer span
+/// ```
+#[derive(Debug, PartialEq)]
+pub struct Global<'s> {
+    pub inner: &'s str,
+    pub outer: &'s str,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CssFragment<'s> {
+    Class(&'s str),
+    Global(Global<'s>),
+}
+
+pub fn parse_css<'s>(input: &str) -> Result<Vec<CssFragment>, ParseError<&str, ContextError>> {
     style_rule_list.parse(input)
 }
 
@@ -54,6 +71,19 @@ fn class<'s>(input: &mut &'s str) -> PResult<&'s str> {
     preceded('.', identifier).parse_next(input)
 }
 
+fn global<'s>(input: &mut &'s str) -> PResult<Global<'s>> {
+    let (inner, outer) = preceded(
+        ":global(",
+        cut_err(terminated(
+            stuff_till(0.., (')', '(', '{')), // inner
+            ')',
+        )),
+    )
+    .with_recognized() // outer
+    .parse_next(input)?;
+    Ok(Global { inner, outer })
+}
+
 fn string_dq<'s>(input: &mut &'s str) -> PResult<&'s str> {
     let str_char = alt((none_of(['"']).map(|_| ()), tag("\\\"").map(|_| ())));
     let str_chars = recognize_repeat(0.., str_char);
@@ -93,12 +123,14 @@ pub fn stuff_till<'s>(
     .recognize()
 }
 
-fn selector<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
+fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     fold_repeat(
         1..,
         alt((
-            class.map(Some),
-            stuff_till(1.., ('.', ';', '{', '}')).map(|_| None),
+            class.map(|c| Some(CssFragment::Class(c))),
+            global.map(|g| Some(CssFragment::Global(g))),
+            ':'.map(|_| None),
+            stuff_till(1.., ('.', ';', '{', '}', ':')).map(|_| None),
         )),
         Vec::new,
         |mut acc, item| {
@@ -122,7 +154,7 @@ fn declaration<'s>(input: &mut &'s str) -> PResult<&'s str> {
         .parse_next(input)
 }
 
-fn style_rule_block<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
+fn style_rule_block<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     let content = alt((
         declaration.map(|_| None), //
         at_rule.map(Some),
@@ -138,13 +170,13 @@ fn style_rule_block<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
     preceded('{', cut_err(terminated(contents, (ws, '}')))).parse_next(input)
 }
 
-fn style_rule<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
+fn style_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     let (mut classes, mut nested_classes) = (selector, style_rule_block).parse_next(input)?;
     classes.append(&mut nested_classes);
     Ok(classes)
 }
 
-fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
+fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     let (identifier, char) = preceded(
         '@',
         cut_err((
@@ -177,7 +209,7 @@ fn unknown_block_contents<'s>(input: &mut &'s str) -> PResult<&'s str> {
     .parse_next(input)
 }
 
-fn style_rule_list<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
+fn style_rule_list<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     terminated(
         fold_repeat(0.., style_rule, Vec::new, |mut acc, mut item| {
             acc.append(&mut item);
@@ -201,7 +233,14 @@ fn test_selector() {
     let mut input = ".foo.bar [value=\"fa.sdasd\"] /* .banana */ // .apple \n \t .cry {";
 
     let r = selector.parse_next(&mut input);
-    assert_eq!(r, Ok(vec!["foo", "bar", "cry"]));
+    assert_eq!(
+        r,
+        Ok(vec![
+            CssFragment::Class("foo"),
+            CssFragment::Class("bar"),
+            CssFragment::Class("cry")
+        ])
+    );
 
     let mut input = "{";
 
@@ -236,18 +275,50 @@ fn test_style_rule() {
     }END";
 
     let r = style_rule.parse_next(&mut input);
-    assert_eq!(r, Ok(vec!["foo", "bar", "baz", "moo"]));
+    assert_eq!(
+        r,
+        Ok(vec![
+            CssFragment::Class("foo"),
+            CssFragment::Class("bar"),
+            CssFragment::Class("baz"),
+            CssFragment::Class("moo")
+        ])
+    );
 
     assert_eq!(input, "END");
 }
 
 #[test]
 fn test_style_rule_list() {
-    let mut input =
-        ".foo.bar { background-color \t\r\n : red; color: blue; } .baz.moo { color: red; .rad { color: red; } } ";
+    let mut input = "
+        .foo.bar :global(.global) {
+            background-color \t\r\n : red;
+            color: blue;
+        }
+        
+        .baz.moo {
+            color: red;
+            .rad {
+                color: red;
+            }
+        }
+    ";
 
     let r = style_rule_list.parse_next(&mut input);
-    assert_eq!(r, Ok(vec!["foo", "bar", "baz", "moo", "rad"]));
+    assert_eq!(
+        r,
+        Ok(vec![
+            CssFragment::Class("foo"),
+            CssFragment::Class("bar"),
+            CssFragment::Global(Global {
+                inner: ".global",
+                outer: ":global(.global)"
+            }),
+            CssFragment::Class("baz"),
+            CssFragment::Class("moo"),
+            CssFragment::Class("rad"),
+        ])
+    );
 
     assert!(input.is_empty());
 }
@@ -303,7 +374,14 @@ fn test_at_rule_media() {
     }";
 
     let r = at_rule.parse_next(&mut input);
-    assert_eq!(r, Ok(vec!["foo", "bar", "baz"]));
+    assert_eq!(
+        r,
+        Ok(vec![
+            CssFragment::Class("foo"),
+            CssFragment::Class("bar"),
+            CssFragment::Class("baz")
+        ])
+    );
 
     assert!(input.is_empty());
 }
