@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.79"
 winnow = "0.5.31"
+toml = "0.8.8"
+serde = { version = "1.0.194", features = ["derive"] }

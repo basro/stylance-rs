@@ -5,11 +5,56 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs,
     hash::{Hash as _, Hasher as _},
-    path::Path,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use anyhow::anyhow;
 use parse::{CssFragment, Global};
+use serde::Deserialize;
+
+#[derive(Clone)]
+pub struct Config {
+    pub output: Option<PathBuf>,
+    pub extensions: Vec<String>,
+    pub folders: Vec<PathBuf>,
+}
+
+impl From<ConfigToml> for Config {
+    fn from(value: ConfigToml) -> Self {
+        Config {
+            output: value.output,
+            extensions: value
+                .extensions
+                .unwrap_or_else(|| vec![".module.css".to_owned(), ".module.scss".to_owned()]),
+            folders: value
+                .folders
+                .unwrap_or_else(|| vec![PathBuf::from_str("./src/").expect("path is valid")]),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ConfigToml {
+    pub output: Option<PathBuf>,
+    pub extensions: Option<Vec<String>>,
+    pub folders: Option<Vec<PathBuf>>,
+}
+
+#[derive(Deserialize)]
+pub struct CargoToml {
+    package: Option<CargoTomlPackage>,
+}
+
+#[derive(Deserialize)]
+pub struct CargoTomlPackage {
+    metadata: Option<CargoTomlPackageMetadata>,
+}
+
+#[derive(Deserialize)]
+pub struct CargoTomlPackageMetadata {
+    stylance: Option<ConfigToml>,
+}
 
 pub fn hash_string(input: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -20,6 +65,26 @@ pub fn hash_string(input: &str) -> u64 {
 pub struct Class {
     pub original_name: String,
     pub hashed_name: String,
+}
+
+pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
+    println!("toml {manifest_dir:?}");
+    let cargo_toml_contents = fs::read_to_string(manifest_dir.join("Cargo.toml"))?;
+    println!("toml {cargo_toml_contents}");
+
+    let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
+
+    match cargo_toml.package {
+        Some(CargoTomlPackage {
+            metadata:
+                Some(CargoTomlPackageMetadata {
+                    stylance: Some(config),
+                }),
+        }) => Ok(config.into()),
+        _ => Err(anyhow!(
+            "`package.metadata.stylance` not found in Cargo.toml"
+        )),
+    }
 }
 
 fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {

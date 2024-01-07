@@ -10,3 +10,4 @@ walkdir = "2.4.0"
 core = { workspace = true }
 clap = { version = "4.4.12", features = ["derive"] }
 anyhow = "1.0.79"
+notify = "6.1.1"
