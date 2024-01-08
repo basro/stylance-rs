@@ -14,13 +14,15 @@ use notify::{Event, RecursiveMode, Watcher};
 use walkdir::WalkDir;
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-#[command(arg_required_else_help = true)]
+#[command(author, version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
     manifest_dir: PathBuf,
 
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    #[arg(short, long, num_args(1))]
+    folder: Vec<PathBuf>,
 
     #[arg(short, long)]
     watch: bool,
@@ -56,11 +58,17 @@ fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
         .or_else(|| config.output.as_ref().map(|p| cli.manifest_dir.join(p)))
         .ok_or_else(|| anyhow!("Output not specified"))?;
 
+    let folders = if cli.folder.is_empty() {
+        config.folders
+    } else {
+        cli.folder.clone()
+    };
+
     Ok(RunConfig {
         manifest_dir: cli.manifest_dir.clone(),
         output_file,
         extensions: config.extensions,
-        folders: config.folders,
+        folders,
     })
 }
 
