@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{self, File},
     io::Write,
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
@@ -94,6 +94,10 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
                 }
             }
         }
+    }
+
+    if let Some(parent) = config.output_file.parent() {
+        fs::create_dir_all(parent)?;
     }
 
     let mut file = File::create(&config.output_file)?;
