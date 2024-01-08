@@ -4,6 +4,7 @@ edition = "2021"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Internal crate used by stylance"
 
 [dependencies]
 anyhow = "1.0.79"
