@@ -1,4 +1,4 @@
-#![cfg_attr(nightly, feature(proc_macro_span))]
+#![cfg_attr(feature = "nightly", feature(proc_macro_span))]
 
 use std::{env, path::Path};
 
