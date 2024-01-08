@@ -7,10 +7,10 @@ repository.workspace = true
 readme.workspace = true
 
 [features]
-nightly = ["macros/nightly"]
+nightly = ["stylance-macros/nightly"]
 
 [dependencies]
-macros = { workspace = true }
+stylance-macros = { workspace = true }
 
 [package.metadata.stylance]
 folders = ["examples"]

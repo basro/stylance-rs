@@ -3,8 +3,8 @@ resolver = "2"
 members = ["stylance", "stylance-cli", "internal/*"]
 
 [workspace.dependencies]
-core = { path = "./internal/core" }
-macros = { path = "./internal/macros" }
+stylance-core = { path = "./internal/stylance-core", version = "0.0.1" }
+stylance-macros = { path = "./internal/stylance-macros", version = "0.0.1" }
 
 [workspace.package]
 version = "0.0.1"

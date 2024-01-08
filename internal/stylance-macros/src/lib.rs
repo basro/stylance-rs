@@ -16,7 +16,7 @@ pub fn import_style_classes(input: TokenStream) -> TokenStream {
     let manifest_path = Path::new(&manifest_dir_env);
     let file_path = manifest_path.join(Path::new(&input.value()));
 
-    let (_, classes) = core::get_classes(manifest_path, &file_path).expect("Load classes");
+    let (_, classes) = stylance_core::get_classes(manifest_path, &file_path).expect("Load classes");
 
     let binding = file_path.canonicalize().unwrap();
     let full_path = binding.to_string_lossy();

@@ -121,17 +121,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
-name = "core"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "serde",
- "siphasher",
- "toml",
- "winnow",
-]
-
-[[package]]
 name = "crossbeam-channel"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -252,16 +241,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
-name = "macros"
-version = "0.0.1"
-dependencies = [
- "core",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -379,7 +358,7 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 name = "stylance"
 version = "0.0.1"
 dependencies = [
- "macros",
+ "stylance-macros",
 ]
 
 [[package]]
@@ -388,9 +367,30 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
- "core",
  "notify",
+ "stylance-core",
  "walkdir",
+]
+
+[[package]]
+name = "stylance-core"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "serde",
+ "siphasher",
+ "toml",
+ "winnow",
+]
+
+[[package]]
+name = "stylance-macros"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "stylance-core",
+ "syn",
 ]
 
 [[package]]

@@ -1,4 +1,3 @@
-use core::load_config;
 use std::{
     fs::File,
     io::Write,
@@ -7,6 +6,7 @@ use std::{
     thread::{self, sleep},
     time::Duration,
 };
+use stylance_core::load_config;
 
 use anyhow::anyhow;
 use clap::Parser;
@@ -87,7 +87,7 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
                 let path_str = entry.path().to_string_lossy();
                 if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
                     println!("{}", entry.path().display());
-                    modified_css_files.push(core::load_and_modify_css(
+                    modified_css_files.push(stylance_core::load_and_modify_css(
                         &config.manifest_dir,
                         entry.path(),
                     )?);

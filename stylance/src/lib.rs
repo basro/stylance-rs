@@ -1,4 +1,4 @@
-pub use macros::*;
+pub use stylance_macros::*;
 
 #[cfg(feature = "nightly")]
 #[macro_export]

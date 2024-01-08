@@ -5,10 +5,11 @@ version.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
+description = "Cli tool for bundling stylance scoped CSS files."
 
 [dependencies]
 walkdir = "2.4.0"
-core = { workspace = true }
+stylance-core = { workspace = true }
 clap = { version = "4.4.12", features = ["derive", "cargo"] }
 anyhow = "1.0.79"
 notify = "6.1.1"

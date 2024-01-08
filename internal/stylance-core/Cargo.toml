@@ -1,9 +1,9 @@
 [package]
-name = "core"
-version.workspace = true
+name = "stylance-core"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow = "1.0.79"
