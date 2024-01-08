@@ -122,7 +122,7 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
 name = "core"
-version = "1.2.3"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -253,7 +253,7 @@ checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
 name = "macros"
-version = "1.2.3"
+version = "0.0.1"
 dependencies = [
  "core",
  "proc-macro2",
@@ -377,14 +377,14 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "stylance"
-version = "1.2.3"
+version = "0.0.1"
 dependencies = [
  "macros",
 ]
 
 [[package]]
 name = "stylance-cli"
-version = "1.2.3"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",

@@ -7,5 +7,7 @@ core = { path = "./internal/core" }
 macros = { path = "./internal/macros" }
 
 [workspace.package]
-version = "1.2.3"
-authors = ["Mario Carbajal"]
+version = "0.0.1"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/basro/stylance-rs"
+readme = "README.md"

@@ -1,12 +1,16 @@
 [package]
 name = "stylance"
-version.workspace = true
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
 
 [features]
 nightly = ["macros/nightly"]
 
 [dependencies]
 macros = { workspace = true }
+
+[package.metadata.stylance]
+folders = ["examples"]

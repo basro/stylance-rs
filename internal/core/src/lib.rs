@@ -34,7 +34,7 @@ impl From<ConfigToml> for Config {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct ConfigToml {
     pub output: Option<PathBuf>,
     pub extensions: Option<Vec<String>>,
@@ -78,9 +78,7 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
                     stylance: Some(config),
                 }),
         }) => Ok(config.into()),
-        _ => Err(anyhow!(
-            "`package.metadata.stylance` not found in Cargo.toml"
-        )),
+        _ => Ok(ConfigToml::default().into()),
     }
 }
 
