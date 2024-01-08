@@ -1,5 +1,5 @@
 use winnow::{
-    combinator::{alt, cut_err, fold_repeat, preceded, terminated},
+    combinator::{alt, cut_err, fold_repeat, peek, preceded, terminated},
     error::{ContextError, ParseError},
     stream::{AsChar, ContainsToken, Range},
     token::{none_of, one_of, tag, take_till, take_until0, take_while},
@@ -148,7 +148,10 @@ fn declaration<'s>(input: &mut &'s str) -> PResult<&'s str> {
         identifier,
         ws,
         ':',
-        terminated(stuff_till(1.., (';', '{', '}')), ';'),
+        terminated(
+            stuff_till(1.., (';', '{', '}')),
+            alt((';', peek('}'))), // semicolon is optional if it's the last element in a rule block
+        ),
     )
         .recognize()
         .parse_next(input)
@@ -181,12 +184,12 @@ fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
         '@',
         cut_err((
             terminated(identifier, stuff_till(0.., ('{', '}', ';'))),
-            one_of(('{', ';')),
+            alt(('{', ';', peek('}'))),
         )),
     )
     .parse_next(input)?;
 
-    if char == ';' {
+    if char != '{' {
         return Ok(vec![]);
     }
 
