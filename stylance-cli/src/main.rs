@@ -15,6 +15,7 @@ use walkdir::WalkDir;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     manifest_dir: PathBuf,
 
