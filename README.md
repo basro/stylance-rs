@@ -60,7 +60,7 @@ Run stylance cli:
 stylance --output ./bundled.scss ./path/to/crate/dir/
 ```
 
-This will find all the files ending with `.module.scss` and `.module.css`and bundle them into ./bundled.css, all classes will be modified to include a hash that matches the one the `import_crate_style!` macro produces.
+This will find all the files ending with `.module.scss` and `.module.css`and bundle them into `./bundled.scss`, all classes will be modified to include a hash that matches the one the `import_crate_style!` macro produces.
 
 Resulting output.scss:
 
