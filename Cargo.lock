@@ -126,6 +126,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
+ "siphasher",
  "toml",
  "winnow",
 ]
@@ -361,6 +362,12 @@ checksum = "eb3622f419d1296904700073ea6cc23ad690adbd66f13ea683df73298736f0c1"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "siphasher"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54ac45299ccbd390721be55b412d41931911f654fa99e2cb8bfb57184b2061fe"
 
 [[package]]
 name = "strsim"

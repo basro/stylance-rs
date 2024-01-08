@@ -1,0 +1,22 @@
+.header {
+	color: red;
+}
+
+.contents {
+	background-color: cyan;
+
+	/* Use :global() to address non module-scoped classes. */
+	& :global(.paragraph) {
+		color: orange;
+	}
+}
+
+@media only screen and (min-width: 40em) {
+	.header {
+		color: blue;
+	}
+
+	.contents {
+		background-color: magenta;
+	}
+}

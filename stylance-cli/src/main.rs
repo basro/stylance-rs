@@ -1,9 +1,8 @@
-use core::{load_config, Config};
+use core::load_config;
 use std::{
-    ffi::OsStr,
     fs::File,
     io::Write,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
@@ -11,7 +10,7 @@ use std::{
 
 use anyhow::anyhow;
 use clap::Parser;
-use notify::{Event, EventHandler, RecursiveMode, Watcher};
+use notify::{Event, RecursiveMode, Watcher};
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -102,11 +101,11 @@ fn watch(cli: &Cli, run_config: RunConfig) -> anyhow::Result<()> {
         let run_config = run_config.clone();
         move || {
             while run_event_rx.recv().is_ok() {
-                sleep(Duration::from_millis(100));
                 let run_config = run_config.lock().unwrap().clone();
                 if let Err(e) = run(&run_config) {
                     println!("{e}");
                 }
+                sleep(Duration::from_millis(100));
             }
         }
     });
@@ -138,18 +137,20 @@ fn watch(cli: &Cli, run_config: RunConfig) -> anyhow::Result<()> {
                     break;
                 }
 
-                if str_path.ends_with("Cargo.toml") {
-                    if let Ok(canonicalized) = path.canonicalize() {
-                        if canonicalized == cargo_toml_path {
-                            match make_run_config(cli) {
-                                Ok(new_config) => {
-                                    *run_config.lock().unwrap() = Arc::new(new_config);
-                                    break 'watch_events;
-                                }
-                                Err(e) => {
-                                    println!("{e}");
-                                }
-                            }
+                if str_path.ends_with("Cargo.toml")
+                    && path
+                        .canonicalize()
+                        .ok()
+                        .filter(|p| *p == cargo_toml_path)
+                        .is_some()
+                {
+                    match make_run_config(cli) {
+                        Ok(new_config) => {
+                            *run_config.lock().unwrap() = Arc::new(new_config);
+                            break 'watch_events;
+                        }
+                        Err(e) => {
+                            println!("{e}");
                         }
                     }
                 }

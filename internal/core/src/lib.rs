@@ -2,7 +2,6 @@ mod parse;
 
 use std::{
     borrow::Cow,
-    collections::hash_map::DefaultHasher,
     fs,
     hash::{Hash as _, Hasher as _},
     path::{Path, PathBuf},
@@ -12,6 +11,7 @@ use std::{
 use anyhow::anyhow;
 use parse::{CssFragment, Global};
 use serde::Deserialize;
+use siphasher::sip::SipHasher13;
 
 #[derive(Clone)]
 pub struct Config {
@@ -57,7 +57,7 @@ pub struct CargoTomlPackageMetadata {
 }
 
 pub fn hash_string(input: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = SipHasher13::new();
     input.hash(&mut hasher);
     hasher.finish()
 }
@@ -68,10 +68,7 @@ pub struct Class {
 }
 
 pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
-    println!("toml {manifest_dir:?}");
     let cargo_toml_contents = fs::read_to_string(manifest_dir.join("Cargo.toml"))?;
-    println!("toml {cargo_toml_contents}");
-
     let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
 
     match cargo_toml.package {
@@ -95,8 +92,6 @@ fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
 
     #[cfg(target_os = "windows")]
     let relative_path_str = relative_path_str.replace('\\', "/");
-
-    println!("{}", relative_path_str);
 
     let hash = hash_string(&relative_path_str);
     let mut hash_str = format!("{hash:x}");

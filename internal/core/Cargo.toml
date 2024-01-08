@@ -1,0 +1,13 @@
+[package]
+name = "core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.79"
+winnow = "0.5.31"
+toml = "0.8.8"
+serde = { version = "1.0.194", features = ["derive"] }
+siphasher = "1.0.0"

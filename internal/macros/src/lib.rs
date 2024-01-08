@@ -5,30 +5,7 @@ use std::{env, path::Path};
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::{
-    parse::{Parse, ParseStream},
-    parse_macro_input, LitStr, Token,
-};
-
-struct ImportStyleInput {
-    style_ident: Ident,
-    style_path: String,
-    is_pub: bool,
-}
-
-impl Parse for ImportStyleInput {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let is_pub = input.parse::<Token![pub]>().is_ok();
-        let ident: Ident = input.parse()?;
-        input.parse::<Token![,]>()?;
-        let string_literal: LitStr = input.parse()?;
-        Ok(ImportStyleInput {
-            style_ident: ident,
-            style_path: string_literal.value(),
-            is_pub,
-        })
-    }
-}
+use syn::{parse_macro_input, LitStr};
 
 #[proc_macro]
 pub fn import_style_classes(input: TokenStream) -> TokenStream {

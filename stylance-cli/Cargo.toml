@@ -11,3 +11,7 @@ core = { workspace = true }
 clap = { version = "4.4.12", features = ["derive"] }
 anyhow = "1.0.79"
 notify = "6.1.1"
+
+[[bin]]
+name = "stylance"
+path = "./src/main.rs"
