@@ -2,7 +2,7 @@
 
 Stylance is a library and cli tool for working with scoped CSS in rust.
 
-# Usage
+## Usage
 
 Stylance is divided in two parts:
 
