@@ -154,6 +154,6 @@ Supposedly one should be able to disable the expansion of the macro adding this 
 },
 ```
 
-But unfortunately I've not been able to make that work, any help getting this to work would be appreciated.
+Unfortunately this doesn't seem to work at the moment, this rust analyzer feature might fix the issue: https://github.com/rust-lang/rust-analyzer/pull/15923
 
 In the meantime the nightly `import_style` is my recommended way to work with this crate.
