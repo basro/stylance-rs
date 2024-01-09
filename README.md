@@ -1,4 +1,4 @@
-# Stylance
+# Stylance ![crates.io](https://img.shields.io/crates/v/stylance.svg)
 
 Stylance is a library and tool for working with scoped CSS in rust inspired by CSS modules.
 
