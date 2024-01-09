@@ -116,7 +116,7 @@ fn watch(cli: &Cli, run_config: RunConfig) -> anyhow::Result<()> {
             while run_event_rx.recv().is_ok() {
                 let run_config = run_config.lock().unwrap().clone();
                 if let Err(e) = run(&run_config) {
-                    println!("{e}");
+                    eprintln!("{e}");
                 }
                 sleep(Duration::from_millis(100));
             }
@@ -163,7 +163,7 @@ fn watch(cli: &Cli, run_config: RunConfig) -> anyhow::Result<()> {
                             break 'watch_events;
                         }
                         Err(e) => {
-                            println!("{e}");
+                            eprintln!("{e}");
                         }
                     }
                 }
