@@ -220,48 +220,52 @@ fn style_rule_list<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     .parse_next(input)
 }
 
-#[test]
-fn test_class() {
-    let mut input = "._x1a2b Hello";
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let r = class.parse_next(&mut input);
-    assert_eq!(r, Ok("_x1a2b"));
-}
+    #[test]
+    fn test_class() {
+        let mut input = "._x1a2b Hello";
 
-#[test]
-fn test_selector() {
-    let mut input = ".foo.bar [value=\"fa.sdasd\"] /* .banana */ // .apple \n \t .cry {";
+        let r = class.parse_next(&mut input);
+        assert_eq!(r, Ok("_x1a2b"));
+    }
 
-    let r = selector.parse_next(&mut input);
-    assert_eq!(
-        r,
-        Ok(vec![
-            CssFragment::Class("foo"),
-            CssFragment::Class("bar"),
-            CssFragment::Class("cry")
-        ])
-    );
+    #[test]
+    fn test_selector() {
+        let mut input = ".foo.bar [value=\"fa.sdasd\"] /* .banana */ // .apple \n \t .cry {";
 
-    let mut input = "{";
+        let r = selector.parse_next(&mut input);
+        assert_eq!(
+            r,
+            Ok(vec![
+                CssFragment::Class("foo"),
+                CssFragment::Class("bar"),
+                CssFragment::Class("cry")
+            ])
+        );
 
-    let r = selector.recognize().parse_next(&mut input);
-    assert!(r.is_err());
-}
+        let mut input = "{";
 
-#[test]
-fn test_declaration() {
-    let mut input = "background-color \t : red;";
+        let r = selector.recognize().parse_next(&mut input);
+        assert!(r.is_err());
+    }
 
-    let r = declaration.parse_next(&mut input);
-    assert_eq!(r, Ok("background-color \t : red;"));
+    #[test]
+    fn test_declaration() {
+        let mut input = "background-color \t : red;";
 
-    let r = declaration.parse_next(&mut input);
-    assert!(r.is_err());
-}
+        let r = declaration.parse_next(&mut input);
+        assert_eq!(r, Ok("background-color \t : red;"));
 
-#[test]
-fn test_style_rule() {
-    let mut input = ".foo.bar {
+        let r = declaration.parse_next(&mut input);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_style_rule() {
+        let mut input = ".foo.bar {
         background-color: red;
         .baz {
             color: blue;
@@ -274,23 +278,23 @@ fn test_style_rule() {
         }
     }END";
 
-    let r = style_rule.parse_next(&mut input);
-    assert_eq!(
-        r,
-        Ok(vec![
-            CssFragment::Class("foo"),
-            CssFragment::Class("bar"),
-            CssFragment::Class("baz"),
-            CssFragment::Class("moo")
-        ])
-    );
+        let r = style_rule.parse_next(&mut input);
+        assert_eq!(
+            r,
+            Ok(vec![
+                CssFragment::Class("foo"),
+                CssFragment::Class("bar"),
+                CssFragment::Class("baz"),
+                CssFragment::Class("moo")
+            ])
+        );
 
-    assert_eq!(input, "END");
-}
+        assert_eq!(input, "END");
+    }
 
-#[test]
-fn test_style_rule_list() {
-    let mut input = "
+    #[test]
+    fn test_style_rule_list() {
+        let mut input = "
         .foo.bar :global(.global) {
             background-color \t\r\n : red;
             color: blue;
@@ -304,38 +308,38 @@ fn test_style_rule_list() {
         }
     ";
 
-    let r = style_rule_list.parse_next(&mut input);
-    assert_eq!(
-        r,
-        Ok(vec![
-            CssFragment::Class("foo"),
-            CssFragment::Class("bar"),
-            CssFragment::Global(Global {
-                inner: ".global",
-                outer: ":global(.global)"
-            }),
-            CssFragment::Class("baz"),
-            CssFragment::Class("moo"),
-            CssFragment::Class("rad"),
-        ])
-    );
+        let r = style_rule_list.parse_next(&mut input);
+        assert_eq!(
+            r,
+            Ok(vec![
+                CssFragment::Class("foo"),
+                CssFragment::Class("bar"),
+                CssFragment::Global(Global {
+                    inner: ".global",
+                    outer: ":global(.global)"
+                }),
+                CssFragment::Class("baz"),
+                CssFragment::Class("moo"),
+                CssFragment::Class("rad"),
+            ])
+        );
 
-    assert!(input.is_empty());
-}
+        assert!(input.is_empty());
+    }
 
-#[test]
-fn test_at_rule_simple() {
-    let mut input = "@simple-rule blah \"asd;asd\" blah;";
+    #[test]
+    fn test_at_rule_simple() {
+        let mut input = "@simple-rule blah \"asd;asd\" blah;";
 
-    let r = at_rule.parse_next(&mut input);
-    assert_eq!(r, Ok(vec![]));
+        let r = at_rule.parse_next(&mut input);
+        assert_eq!(r, Ok(vec![]));
 
-    assert!(input.is_empty());
-}
+        assert!(input.is_empty());
+    }
 
-#[test]
-fn test_at_rule_unknown() {
-    let mut input = "@unknown blah \"asdasd\" blah {
+    #[test]
+    fn test_at_rule_unknown() {
+        let mut input = "@unknown blah \"asdasd\" blah {
         bunch of stuff {
             // things inside {
             blah
@@ -351,15 +355,15 @@ fn test_at_rule_unknown() {
         }
     }";
 
-    let r = at_rule.parse_next(&mut input);
-    assert_eq!(r, Ok(vec![]));
+        let r = at_rule.parse_next(&mut input);
+        assert_eq!(r, Ok(vec![]));
 
-    assert!(input.is_empty());
-}
+        assert!(input.is_empty());
+    }
 
-#[test]
-fn test_at_rule_media() {
-    let mut input = "@media blah \"asdasd\" blah {
+    #[test]
+    fn test_at_rule_media() {
+        let mut input = "@media blah \"asdasd\" blah {
         .foo {
             background-color: red;
         }
@@ -373,15 +377,16 @@ fn test_at_rule_media() {
         }
     }";
 
-    let r = at_rule.parse_next(&mut input);
-    assert_eq!(
-        r,
-        Ok(vec![
-            CssFragment::Class("foo"),
-            CssFragment::Class("bar"),
-            CssFragment::Class("baz")
-        ])
-    );
+        let r = at_rule.parse_next(&mut input);
+        assert_eq!(
+            r,
+            Ok(vec![
+                CssFragment::Class("foo"),
+                CssFragment::Class("bar"),
+                CssFragment::Class("baz")
+            ])
+        );
 
-    assert!(input.is_empty());
+        assert!(input.is_empty());
+    }
 }
