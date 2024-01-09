@@ -2,7 +2,7 @@
 
 Stylance is a library and cli tool for working with scoped CSS in rust.
 
-Features
+**Features:**
 
 - Import hashed class names from css files into your rust code as string constants. Trying to use a class name that doesn't exist in the css file becomes an error in rust.
 - Bundle your css module files into a single output css file with all the class names transformed to include a hash (by using stylance cli).
