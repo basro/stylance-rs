@@ -29,7 +29,6 @@ Then use the import_crate_style proc macro to read a css/scss file and bring the
 `src/component/card/card.module.scss` file's content:
 
 ```css
-/*  */
 .header {
   background-color: red;
 }
