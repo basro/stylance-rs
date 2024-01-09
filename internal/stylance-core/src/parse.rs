@@ -85,14 +85,14 @@ fn global<'s>(input: &mut &'s str) -> PResult<Global<'s>> {
 }
 
 fn string_dq<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    let str_char = alt((none_of(['"']).map(|_| ()), tag("\\\"").map(|_| ())));
+    let str_char = alt((none_of(['"']).void(), tag("\\\"").void()));
     let str_chars = recognize_repeat(0.., str_char);
 
     preceded('"', cut_err(terminated(str_chars, '"'))).parse_next(input)
 }
 
 fn string_sq<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    let str_char = alt((none_of(['\'']).map(|_| ()), tag("\\'").map(|_| ())));
+    let str_char = alt((none_of(['\'']).void(), tag("\\'").void()));
     let str_chars = recognize_repeat(0.., str_char);
 
     preceded('\'', cut_err(terminated(str_chars, '\''))).parse_next(input)
@@ -108,19 +108,16 @@ pub fn stuff_till<'s>(
     range: impl Into<Range>,
     list: impl ContainsToken<char>,
 ) -> impl Parser<&'s str, &'s str, ContextError> {
-    fold_repeat(
+    recognize_repeat(
         range,
         alt((
-            string.map(|_| ()),
-            block_comment.map(|_| ()),
-            line_comment.map(|_| ()),
-            '/'.map(|_| ()),
-            take_till(1.., ('\'', '"', '/', list)).map(|_| ()),
+            string.void(),
+            block_comment.void(),
+            line_comment.void(),
+            '/'.void(),
+            take_till(1.., ('\'', '"', '/', list)).void(),
         )),
-        || (),
-        |_, _| (),
     )
-    .recognize()
 }
 
 fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
@@ -205,8 +202,8 @@ fn unknown_block_contents<'s>(input: &mut &'s str) -> PResult<&'s str> {
     recognize_repeat(
         0..,
         alt((
-            stuff_till(1.., ('{', '}')).map(|_| ()),
-            ('{', cut_err((unknown_block_contents, '}'))).map(|_| ()),
+            stuff_till(1.., ('{', '}')).void(),
+            ('{', cut_err((unknown_block_contents, '}'))).void(),
         )),
     )
     .parse_next(input)
