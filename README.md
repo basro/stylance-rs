@@ -127,3 +127,33 @@ folders = ["./src/", "./styles/"]
 # defaults to [".module.scss", ".module.css"]
 extensions = [".module.scss", ".module.css"]
 ```
+
+## Rust analyzer completion issues
+
+### Nightly `import_style!`
+
+Rust analyzer will not produce any completion for import_style!, this is because it doesn't support the nightly features used to obtain the current rust file path.
+
+### Stable `import_crate_style!`
+
+Rust analyzer will expand the `import_crate_style!(style, "src/mystyle.module.css")` macro properly the first time, which means you'll be able to get completion when typing `style::|`.
+
+Unfortunately RA will cache the result and will not realize that it needs to reevaluate the proc macro when the contents of `src/mystyle.module.css` change.
+
+This only affects completion, errors from cargo check will properly update.
+
+The only way to force RA to reevaluate the macros is to restart the server or to rebuild all proc macros. Sadly this takes a really long time.
+
+It is my opinion that no completion would be better than outdated completion.
+
+Supposedly one should be able to disable the expansion of the macro adding this to `.vscode/settings.json`
+
+```json
+"rust-analyzer.procMacro.ignored": {
+   "stylance": ["import_style_classes"]
+},
+```
+
+But unfortunately I've not been able to make that work, any help getting this to work would be appreciated.
+
+In the meantime the nightly `import_style` is my recommended way to work with this crate.
