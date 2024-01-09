@@ -2,6 +2,13 @@
 
 Stylance is a library and cli tool for working with scoped CSS in rust.
 
+Features
+
+- Import hashed class names from css files into your rust code as string constants. Trying to use a class name that doesn't exist in the css file becomes an error in rust.
+- Bundle your css module files into a single output css file with all the class names transformed to include a hash (by using stylance cli).
+- Class name hashes are deterministic and based on the relative path between the css file and your crate's manifest dir (where the Cargo.toml resides)
+- CSS Bundle generation is independent of the rust build process, allowing for blazingly fast iteration when modifying the contents of a css style rule.
+
 ## Usage
 
 Stylance is divided in two parts:
@@ -64,7 +71,7 @@ stylance::import_style!(my_style, "card.module.scss");
 
 ## Stylance cli
 
-Install stylance cli
+Install stylance cli:
 
 ```cli
 cargo install stylance-cli
