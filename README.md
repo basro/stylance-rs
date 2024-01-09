@@ -51,6 +51,26 @@ All class names found inside the file `src/component/card/card.module.scss` will
 
 The proc macro has no side effects, to generate the transformed css file we then use the stylance cli.
 
+### Accessing global classnames
+
+Sometimes you might want to target classnames that are defined globally and outside of your css module. To do this you can wrap them with `:global()`
+
+```css
+.my_scoped_class :global(.paragraph) {
+  color: red;
+}
+```
+
+this will transform to:
+
+```css
+.my_scoped_class-f45126d .paragraph {
+  color: red;
+}
+```
+
+.my_scoped_class got the module hash attached but .paragraph was left alone while the `:global()` was removed.
+
 ### Nightly feature
 
 If you are using rust nightly you can enable the `nightly` feature to get access to the `import_style!` macro which lets you specify the css module file as relative to the current file.
