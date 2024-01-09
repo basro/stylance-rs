@@ -172,7 +172,7 @@ The only way to force RA to reevaluate the macros is to restart the server or to
 
 It is my opinion that no completion would be better than outdated completion.
 
-Supposedly one should be able to disable the expansion of the macro adding this to `.vscode/settings.json`
+Supposedly one should be able to disable the expansion of the macro by adding this to `.vscode/settings.json`
 
 ```json
 "rust-analyzer.procMacro.ignored": {
