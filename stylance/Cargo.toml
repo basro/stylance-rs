@@ -7,6 +7,9 @@ repository.workspace = true
 readme.workspace = true
 description = "Scoped CSS for rust projects"
 
+[lib]
+doctest = false
+
 [features]
 nightly = ["stylance-macros/nightly"]
 
