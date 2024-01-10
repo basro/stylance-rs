@@ -57,7 +57,7 @@
 //!
 //!
 
-#![feature(doc_cfg)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[doc(hidden)]
 pub use stylance_macros::*;
@@ -92,7 +92,7 @@ pub use stylance_macros::*;
 ///     pub const contents: &str = "contents-539306b";
 /// }
 /// ```
-#[doc(cfg(feature = "nightly"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "nightly")))]
 #[macro_export]
 macro_rules! import_style {
     ($ident:ident, $str:expr) => {

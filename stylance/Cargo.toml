@@ -15,3 +15,6 @@ stylance-macros = { workspace = true }
 
 [package.metadata.stylance]
 folders = ["examples"]
+
+[package.metadata.docs.rs]
+all-features = true
