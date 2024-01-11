@@ -1,5 +1,5 @@
 use winnow::{
-    combinator::{alt, cut_err, fold_repeat, peek, preceded, terminated},
+    combinator::{alt, cut_err, delimited, fold_repeat, peek, preceded, terminated},
     error::{ContextError, ParseError},
     stream::{AsChar, ContainsToken, Range},
     token::{none_of, one_of, tag, take_till, take_until0, take_while},
@@ -154,20 +154,34 @@ fn declaration<'s>(input: &mut &'s str) -> PResult<&'s str> {
         .parse_next(input)
 }
 
-fn style_rule_block<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
+fn style_rule_block_statement<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     let content = alt((
-        declaration.map(|_| None), //
-        at_rule.map(Some),
-        style_rule.map(Some),
+        declaration.map(|_| Vec::new()), //
+        at_rule,
+        style_rule,
     ));
-    let contents = fold_repeat(0.., (ws, content), Vec::new, |mut acc, item| {
-        if let Some(mut item) = item.1 {
-            acc.append(&mut item);
-        }
-        acc
-    });
+    delimited(ws, content, ws).parse_next(input)
+}
 
-    preceded('{', cut_err(terminated(contents, (ws, '}')))).parse_next(input)
+fn style_rule_block_contents<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
+    fold_repeat(
+        0..,
+        style_rule_block_statement,
+        Vec::new,
+        |mut acc, mut item| {
+            acc.append(&mut item);
+            acc
+        },
+    )
+    .parse_next(input)
+}
+
+fn style_rule_block<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
+    preceded(
+        '{',
+        cut_err(terminated(style_rule_block_contents, (ws, '}'))),
+    )
+    .parse_next(input)
 }
 
 fn style_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
@@ -191,7 +205,7 @@ fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     }
 
     if identifier == "media" {
-        cut_err(terminated(style_rule_list, '}')).parse_next(input)
+        cut_err(terminated(style_rule_block_contents, '}')).parse_next(input)
     } else {
         cut_err(terminated(unknown_block_contents, '}')).parse_next(input)?;
         Ok(vec![])
