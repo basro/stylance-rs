@@ -387,6 +387,7 @@ dependencies = [
 name = "stylance-macros"
 version = "0.0.7"
 dependencies = [
+ "anyhow",
  "proc-macro2",
  "quote",
  "stylance-core",
