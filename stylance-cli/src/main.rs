@@ -8,7 +8,6 @@ use std::{
 };
 use stylance_core::load_config;
 
-use anyhow::anyhow;
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
 use walkdir::WalkDir;
@@ -16,14 +15,24 @@ use walkdir::WalkDir;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
+    /// The path where your crate's Cargo toml is located
     manifest_dir: PathBuf,
 
-    #[arg(short, long)]
-    output: Option<PathBuf>,
+    /// Generate a file with all css modules concatenated
+    #[arg(long)]
+    output_file: Option<PathBuf>,
 
+    /// Generate a "stylance" directory in this path with all css modules inside
+    #[arg(long)]
+    output_dir: Option<PathBuf>,
+
+    /// The folders in your crate where stylance will look for css modules
+    ///
+    /// The paths are relative to the manifest_dir and must not land outside of manifest_dir.
     #[arg(short, long, num_args(1))]
     folder: Vec<PathBuf>,
 
+    /// Watch the fylesystem for changes to the css module files
     #[arg(short, long)]
     watch: bool,
 }
@@ -44,7 +53,8 @@ fn main() -> anyhow::Result<()> {
 
 struct RunConfig {
     manifest_dir: PathBuf,
-    output_file: PathBuf,
+    output_file: Option<PathBuf>,
+    output_dir: Option<PathBuf>,
     extensions: Vec<String>,
     folders: Vec<PathBuf>,
 }
@@ -52,11 +62,17 @@ struct RunConfig {
 fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
     let config = load_config(&cli.manifest_dir)?;
 
-    let output_file = cli
-        .output
+    let output_file = cli.output_file.clone().or_else(|| {
+        config
+            .output_file
+            .as_ref()
+            .map(|p| cli.manifest_dir.join(p))
+    });
+
+    let output_dir = cli
+        .output_dir
         .clone()
-        .or_else(|| config.output.as_ref().map(|p| cli.manifest_dir.join(p)))
-        .ok_or_else(|| anyhow!("Output not specified"))?;
+        .or_else(|| config.output_dir.as_ref().map(|p| cli.manifest_dir.join(p)));
 
     let folders = if cli.folder.is_empty() {
         config.folders
@@ -67,6 +83,7 @@ fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
     Ok(RunConfig {
         manifest_dir: cli.manifest_dir.clone(),
         output_file,
+        output_dir,
         extensions: config.extensions,
         folders,
     })
@@ -96,12 +113,67 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
         }
     }
 
-    if let Some(parent) = config.output_file.parent() {
-        fs::create_dir_all(parent)?;
+    if let Some(output_file) = &config.output_file {
+        if let Some(parent) = output_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut file = File::create(output_file)?;
+        file.write_all(
+            modified_css_files
+                .iter()
+                .map(|r| r.contents.as_ref())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+                .as_bytes(),
+        )?;
     }
 
-    let mut file = File::create(&config.output_file)?;
-    file.write_all(modified_css_files.join("\n\n").as_bytes())?;
+    if let Some(output_dir) = &config.output_dir {
+        let output_dir = output_dir.join("stylance");
+        fs::create_dir_all(&output_dir)?;
+
+        let entries = fs::read_dir(&output_dir)?;
+
+        for entry in entries {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+
+            if file_type.is_file() {
+                fs::remove_file(entry.path())?;
+            }
+        }
+
+        let mut new_files = Vec::new();
+        for modified_css in modified_css_files {
+            let new_file_name = format!(
+                "{}-{}.scss",
+                modified_css
+                    .path
+                    .file_stem()
+                    .expect("This path should be a file")
+                    .to_string_lossy(),
+                modified_css.hash
+            );
+
+            new_files.push(new_file_name.clone());
+
+            let file_path = output_dir.join(new_file_name);
+            let mut file = File::create(file_path)?;
+            file.write_all(modified_css.contents.as_bytes())?;
+        }
+
+        let mut file = File::create(output_dir.join("_all.scss"))?;
+        file.write_all(
+            new_files
+                .iter()
+                .map(|f| format!("@use \"{f}\";\n"))
+                .collect::<Vec<_>>()
+                .join("")
+                .as_bytes(),
+        )?;
+    }
+
     Ok(())
 }
 

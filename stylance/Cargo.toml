@@ -18,6 +18,7 @@ stylance-macros = { workspace = true }
 
 [package.metadata.stylance]
 folders = ["examples"]
+output_dir = "../styles/"
 
 [package.metadata.docs.rs]
 all-features = true

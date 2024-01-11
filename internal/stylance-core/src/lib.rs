@@ -13,32 +13,33 @@ use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
 
-#[derive(Clone)]
+fn default_extensions() -> Vec<String> {
+    vec![".module.css".to_owned(), ".module.scss".to_owned()]
+}
+
+fn default_folders() -> Vec<PathBuf> {
+    vec![PathBuf::from_str("./src/").expect("path is valid")]
+}
+
+#[derive(Deserialize)]
 pub struct Config {
-    pub output: Option<PathBuf>,
+    pub output_file: Option<PathBuf>,
+    pub output_dir: Option<PathBuf>,
+    #[serde(default = "default_extensions")]
     pub extensions: Vec<String>,
+    #[serde(default = "default_folders")]
     pub folders: Vec<PathBuf>,
 }
 
-impl From<ConfigToml> for Config {
-    fn from(value: ConfigToml) -> Self {
-        Config {
-            output: value.output,
-            extensions: value
-                .extensions
-                .unwrap_or_else(|| vec![".module.css".to_owned(), ".module.scss".to_owned()]),
-            folders: value
-                .folders
-                .unwrap_or_else(|| vec![PathBuf::from_str("./src/").expect("path is valid")]),
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            output_file: Default::default(),
+            output_dir: Default::default(),
+            extensions: default_extensions(),
+            folders: default_folders(),
         }
     }
-}
-
-#[derive(Deserialize, Default)]
-pub struct ConfigToml {
-    pub output: Option<PathBuf>,
-    pub extensions: Option<Vec<String>>,
-    pub folders: Option<Vec<PathBuf>>,
 }
 
 #[derive(Deserialize)]
@@ -53,7 +54,7 @@ pub struct CargoTomlPackage {
 
 #[derive(Deserialize)]
 pub struct CargoTomlPackageMetadata {
-    stylance: Option<ConfigToml>,
+    stylance: Option<Config>,
 }
 
 pub fn hash_string(input: &str) -> u64 {
@@ -72,15 +73,21 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
         fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
     let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
 
-    match cargo_toml.package {
+    let config = match cargo_toml.package {
         Some(CargoTomlPackage {
             metadata:
                 Some(CargoTomlPackageMetadata {
                     stylance: Some(config),
                 }),
-        }) => Ok(config.into()),
-        _ => Ok(ConfigToml::default().into()),
+        }) => config,
+        _ => Config::default(),
+    };
+
+    if config.extensions.iter().any(|e| e.is_empty()) {
+        return Err(anyhow!("Stylance config extensions can't be empty strings"));
     }
+
+    Ok(config)
 }
 
 fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
@@ -105,7 +112,16 @@ fn modify_class(class: &str, hash_str: &str) -> String {
     format!("{class}-{hash_str}")
 }
 
-pub fn load_and_modify_css(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
+pub struct ModifyCssResult {
+    pub path: PathBuf,
+    pub hash: String,
+    pub contents: String,
+}
+
+pub fn load_and_modify_css(
+    manifest_dir: &Path,
+    css_file: &Path,
+) -> anyhow::Result<ModifyCssResult> {
     let hash_str = make_hash(manifest_dir, css_file)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
@@ -128,7 +144,11 @@ pub fn load_and_modify_css(manifest_dir: &Path, css_file: &Path) -> anyhow::Resu
 
     new_file.push_str(cursor);
 
-    Ok(new_file)
+    Ok(ModifyCssResult {
+        path: css_file.to_owned(),
+        hash: hash_str,
+        contents: new_file,
+    })
 }
 
 pub fn get_classes(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<(String, Vec<Class>)> {

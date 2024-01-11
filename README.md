@@ -135,11 +135,19 @@ All configuration settings are optional.
 ```toml
 [package.metadata.stylance]
 
-# output
-# output file to generate
-# has no default value, when not set you must provide an output
-# to the stylance cli using the --output argumnent.
-output = "./styles/bundle.scss"
+# output_file
+# When set, stylance-cli will bundle all css module files
+# into by concatenating them and put the result in this file.
+output_file = "./styles/bundle.scss"
+
+# output_dir
+# When set, stylance-cli will create a folder named "stylance" inside
+# the output_dir directory.
+# The stylance folder will be populated with one file per detected css module
+# and one _all.scss file that contains one `@use "file.module-hash.scss";` statement
+# per module file.
+# You can use that file to import all your modules into your main scss project.
+output_dir = "./styles/"
 
 # folders
 # folders in which stylance cli will look for css module files.
