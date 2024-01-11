@@ -8,7 +8,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
@@ -68,7 +68,8 @@ pub struct Class {
 }
 
 pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
-    let cargo_toml_contents = fs::read_to_string(manifest_dir.join("Cargo.toml"))?;
+    let cargo_toml_contents =
+        fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
     let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
 
     match cargo_toml.package {
@@ -86,7 +87,10 @@ fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
     let manifest_dir = manifest_dir.canonicalize()?;
     let css_file = css_file.canonicalize()?;
 
-    let relative_path_str = css_file.strip_prefix(manifest_dir)?.to_string_lossy();
+    let relative_path_str = css_file
+        .strip_prefix(manifest_dir)
+        .context("css file should be inside manifest_dir")?
+        .to_string_lossy();
 
     #[cfg(target_os = "windows")]
     let relative_path_str = relative_path_str.replace('\\', "/");
@@ -133,7 +137,7 @@ pub fn get_classes(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<(Stri
     let css_file_contents = fs::read_to_string(css_file)?;
 
     let mut classes = parse::parse_css(&css_file_contents)
-        .map_err(|_| anyhow!("Failed to parse css file"))?
+        .map_err(|e| anyhow!("{e}"))?
         .into_iter()
         .filter_map(|c| {
             if let CssFragment::Class(c) = c {
