@@ -1,0 +1,62 @@
+@charset "utf-8";
+
+// Line comment
+
+/* block comment 
+.class {
+	{ // Invalid syntax inside the comment to ensure this isn't parsed.
+}
+*/
+
+div.style1.style2[value="thing"] {
+	color: red; // line comment after declaration
+	background-color: black;
+}
+
+.style-with-dashes {
+	color: red;
+}
+
+@media (max-width: 600px) {
+	.style3 {
+		background-color: #87ceeb;
+	}
+}
+
+@font-face {
+	font-family: "Trickster";
+	src:
+		local("Trickster"),
+		url("trickster-COLRv1.otf") format("opentype") tech(color-COLRv1),
+		url("trickster-outline.otf") format("opentype"),
+		url("trickster-outline.woff") format("woff");
+}
+
+.style4 {
+	.nested-style {
+		color: red;
+	}
+
+	@media (max-width: 600px) {
+		// scss style nested media query with declarations inside
+		color: blue;
+	}
+}
+
+:global(.global-class) {
+	color: red;
+}
+
+.style5 // comment in between selector
+
+.style6
+
+/* comment in between selector */
+.style7 {
+	color: red;
+}
+
+.style1 {
+	// Repeated style
+	color: blue;
+}
