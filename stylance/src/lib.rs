@@ -60,7 +60,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[doc(hidden)]
-pub use stylance_macros::*;
+pub mod internal {
+    pub use stylance_macros::*;
+}
 
 /// Reads a css file at compile time and generates a module containing the classnames found inside that css file.
 /// Path is relative to the file that called the macro.
@@ -97,12 +99,12 @@ pub use stylance_macros::*;
 macro_rules! import_style {
     ($ident:ident, $str:expr) => {
         mod $ident {
-            ::stylance::import_style_classes_rel!($str);
+            ::stylance::internal::import_style_classes_rel!($str);
         }
     };
     (pub $ident:ident, $str:expr) => {
         pub mod $ident {
-            ::stylance::import_style_classes_rel!($str);
+            ::stylance::internal::import_style_classes_rel!($str);
         }
     };
 }
@@ -139,12 +141,12 @@ macro_rules! import_style {
 macro_rules! import_crate_style {
     ($ident:ident, $str:expr) => {
         mod $ident {
-            ::stylance::import_style_classes!($str);
+            ::stylance::internal::import_style_classes!($str);
         }
     };
     (pub $ident:ident, $str:expr) => {
         pub mod $ident {
-            ::stylance::import_style_classes!($str);
+            ::stylance::internal::import_style_classes!($str);
         }
     };
 }
