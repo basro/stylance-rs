@@ -211,10 +211,15 @@ fn unknown_block_contents<'s>(input: &mut &'s str) -> PResult<&'s str> {
 
 fn style_rule_list<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     terminated(
-        fold_repeat(0.., style_rule, Vec::new, |mut acc, mut item| {
-            acc.append(&mut item);
-            acc
-        }),
+        fold_repeat(
+            0..,
+            terminated(alt((style_rule, at_rule)), ws),
+            Vec::new,
+            |mut acc, mut item| {
+                acc.append(&mut item);
+                acc
+            },
+        ),
         ws,
     )
     .parse_next(input)
@@ -387,6 +392,57 @@ mod tests {
             ])
         );
 
+        assert!(input.is_empty());
+    }
+
+    #[test]
+    fn test_top_level() {
+        let mut input = "// tool.module.scss
+
+        .default_border {
+          border-color: lch(100% 10 10);
+          border-style: dashed double;
+          border-radius: 30px;
+        
+        }
+        
+        @media testing {
+            .foo {
+                color: red;
+            }
+        }
+
+        @debug 1+2 * 3==1+(2 * 3); // true
+
+        .container {
+          padding: 1em;
+          border: 2px solid;
+          border-color: lch(100% 10 10);
+          border-style: dashed double;
+          border-radius: 30px;
+          margin: 1em;
+          background-color: lch(45% 9.5 140.4);
+
+          .bar {
+            color: red;
+          }
+        }
+        
+        @debug 1+2 * 3==1+(2 * 3); // true
+        ";
+
+        let r = style_rule_list.parse_next(&mut input);
+        assert_eq!(
+            r,
+            Ok(vec![
+                CssFragment::Class("default_border"),
+                CssFragment::Class("foo"),
+                CssFragment::Class("container"),
+                CssFragment::Class("bar"),
+            ])
+        );
+
+        println!("{input}");
         assert!(input.is_empty());
     }
 }
