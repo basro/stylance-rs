@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fs::{self, File},
     io::Write,
     path::PathBuf,
@@ -146,8 +147,15 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
 
         let mut new_files = Vec::new();
         for modified_css in modified_css_files {
+            let extension = modified_css
+                .path
+                .extension()
+                .map(|e| e.to_string_lossy())
+                .filter(|e| e == "css")
+                .unwrap_or(Cow::from("scss"));
+
             let new_file_name = format!(
-                "{}-{}.scss",
+                "{}-{}.{extension}",
                 modified_css
                     .path
                     .file_stem()
