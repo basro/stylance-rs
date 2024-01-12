@@ -22,6 +22,7 @@ fn default_folders() -> Vec<PathBuf> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub output_file: Option<PathBuf>,
     pub output_dir: Option<PathBuf>,
