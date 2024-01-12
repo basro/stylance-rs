@@ -120,7 +120,13 @@ By default stylance cli will only look for css modules inside the crate's `./src
 
 If you plan to use the output of stylance in a SASS project (by importing it from a .scss file), then I recommend using the `output-dir` option instead of `output-file`.
 
-When using --output-dir (or output_dir in package.metadata.stylance) stylance will not bundle the transformed module files, instead it will create a "stylance" folder in the specified output-dir path which will contain all the transformed css modules inside.
+```bash
+stylance ./path/to/crate/dir/ --output-dir ./styles/
+```
+
+This will create the folder `./styles/stylance/`.
+
+When using --output-dir (or output_dir in package.metadata.stylance) stylance will not bundle the transformed module files, instead it will create a "stylance" folder in the specified output-dir path which will contain all the transformed css modules inside as individual files.
 
 This "stylance" folder also includes an \_index.scss file that imports all the transformed scss modules.
 
