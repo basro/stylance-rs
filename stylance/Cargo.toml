@@ -1,11 +1,15 @@
 [package]
 name = "stylance"
 edition = "2021"
+authors.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Scoped CSS for rust projects"
+documentation = "https://docs.rs/stylance"
 
 [lib]
 doctest = false

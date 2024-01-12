@@ -1,9 +1,12 @@
 [package]
 name = "stylance-cli"
 edition = "2021"
+authors.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 readme = "README.md"
 description = "Cli tool for bundling stylance scoped CSS files."
 
