@@ -171,7 +171,7 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
             file.write_all(modified_css.contents.as_bytes())?;
         }
 
-        let mut file = File::create(output_dir.join("_all.scss"))?;
+        let mut file = File::create(output_dir.join("_index.scss"))?;
         file.write_all(
             new_files
                 .iter()
