@@ -1,5 +1,10 @@
 # Stylance changelog
 
+## 0.0.9
+
+- Added JoinClasses trait
+- Added classes! utility macro
+
 ## 0.0.8
 
 - Renamed `output` config option to `output-file`
