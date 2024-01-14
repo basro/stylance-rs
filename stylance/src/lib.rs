@@ -314,7 +314,11 @@ impl_join_classes_for_tuples!(
     (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 );
 
-/// Utility macro for (conditionally) joining multiple class names
+/// Utility macro for joining multiple class names.
+///
+/// The macro accepts `&str` `&String` and any refs of `T` where `T` implements `AsRef<str>`
+///
+/// It also accepts `Option` of those types, `None` values will be filtered from the list.
 ///
 /// Example
 ///
@@ -325,6 +329,8 @@ impl_join_classes_for_tuples!(
 ///     my_style::header,
 ///     module_style::header,
 ///     // conditionally activate a global style
+///     if active_tab == 0 { Some(my_style::active) } else { None }
+///     // The same can be expressed with then_some:
 ///     (active_tab == 0).then_some(my_style::active)
 /// );
 /// ```
