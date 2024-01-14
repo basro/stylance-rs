@@ -1,7 +1,7 @@
 use stylance::*;
 
 #[test]
-fn test() {
+fn test_import_crate_style() {
     import_crate_style!(style, "tests/style.module.scss");
 
     assert_eq!(style::style1, "style1-a331da9");
@@ -27,7 +27,7 @@ fn test() {
 
 #[cfg(feature = "nightly")]
 #[test]
-fn test_nightly() {
+fn test_import_style() {
     import_style!(style, "style.module.scss");
 
     assert_eq!(style::style1, "style1-a331da9");

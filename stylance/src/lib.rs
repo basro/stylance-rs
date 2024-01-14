@@ -62,6 +62,59 @@
 #[doc(hidden)]
 pub mod internal {
     pub use stylance_macros::*;
+
+    pub struct NormalizeOptionStr<'a>(Option<&'a str>);
+
+    impl<'a> From<&'a str> for NormalizeOptionStr<'a> {
+        fn from(value: &'a str) -> Self {
+            NormalizeOptionStr::<'a>(Some(value))
+        }
+    }
+
+    impl<'a> From<&'a String> for NormalizeOptionStr<'a> {
+        fn from(value: &'a String) -> Self {
+            NormalizeOptionStr::<'a>(Some(value.as_ref()))
+        }
+    }
+
+    impl<'a, T> From<Option<&'a T>> for NormalizeOptionStr<'a>
+    where
+        T: AsRef<str> + ?Sized,
+    {
+        fn from(value: Option<&'a T>) -> Self {
+            Self(value.map(AsRef::as_ref))
+        }
+    }
+
+    impl<'a, T> From<&'a Option<T>> for NormalizeOptionStr<'a>
+    where
+        T: AsRef<str>,
+    {
+        fn from(value: &'a Option<T>) -> Self {
+            Self(value.as_ref().map(AsRef::as_ref))
+        }
+    }
+
+    pub fn normalize_option_str<'a>(value: impl Into<NormalizeOptionStr<'a>>) -> Option<&'a str> {
+        value.into().0
+    }
+
+    pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
+        let mut iter = slice.iter().flat_map(|c| *c);
+        let first = match iter.next() {
+            Some(first) => first,
+            None => return String::new(),
+        };
+        let size = iter.clone().map(|v| v.len()).sum::<usize>() + slice.len() - 1;
+        let mut result = String::with_capacity(size);
+        result.push_str(first);
+
+        for v in iter {
+            result.push(' ');
+            result.push_str(v);
+        }
+        result
+    }
 }
 
 /// Reads a css file at compile time and generates a module containing the classnames found inside that css file.
@@ -148,5 +201,136 @@ macro_rules! import_crate_style {
         pub mod $ident {
             ::stylance::internal::import_style_classes!($str);
         }
+    };
+}
+
+/// Utility trait for combining tuples of class names into a single string.
+pub trait JoinClasses {
+    /// Join all elements of the tuple into a single string separating them with a single space character.
+    ///
+    /// Option elements of the tuple will be skipped if they are None.
+    ///
+    /// ### Example
+    ///
+    /// ```rust
+    /// import_crate_style!(style, "tests/style.module.scss");
+    /// let current_page = 10; // Some variable to use in the condition
+    ///
+    /// let class_name = (
+    ///     "header",      // Global classname
+    ///     style::style1, // Stylance scoped classname
+    ///     if current_page == 10 { // Conditional class
+    ///         Some("active1")
+    ///     } else {
+    ///         None
+    ///     },
+    ///     (current_page == 11).then_some("active2"), // Same as above but much nicer
+    /// )
+    ///     .join_classes();
+    ///
+    /// // class_name is "header style1-a331da9 active1"
+    /// ```
+    fn join_classes(self) -> String;
+}
+
+macro_rules! impl_join_classes_for_tuples {
+    (($($types:ident),*), ($($idx:tt),*)) => {
+            impl<'a, $($types),*> JoinClasses for ($($types,)*)
+            where
+                $($types: Into<internal::NormalizeOptionStr<'a>>),*
+            {
+                fn join_classes(self) -> String {
+                    let list = &[
+                        $(internal::normalize_option_str(self.$idx)),*
+                    ];
+                    internal::join_opt_str_slice(list)
+                }
+            }
+    };
+}
+
+impl_join_classes_for_tuples!(
+    (T1, T2), //
+    (0, 1)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3), //
+    (0, 1, 2)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4), //
+    (0, 1, 2, 3)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5), //
+    (0, 1, 2, 3, 4)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6), //
+    (0, 1, 2, 3, 4, 5)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7), //
+    (0, 1, 2, 3, 4, 5, 6)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8), //
+    (0, 1, 2, 3, 4, 5, 6, 7)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+);
+
+/// Utility macro for (conditionally) joining multiple class names
+///
+/// Example
+///
+/// ```rust
+/// let active_tab = 0; // set to 1 to disable the active class!
+/// let classes_string = classes!(
+///     "some-global-class",
+///     my_style::header,
+///     module_style::header,
+///     // conditionally activate a global style
+///     (active_tab == 0).then_some(my_style::active)
+/// );
+/// ```
+#[macro_export]
+macro_rules! classes {
+    ($($exp:expr),+) => {
+        ::stylance::JoinClasses::join_classes(($($exp),*))
     };
 }
