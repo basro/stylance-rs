@@ -21,7 +21,7 @@ fn default_folders() -> Vec<PathBuf> {
     vec![PathBuf::from_str("./src/").expect("path is valid")]
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub output_file: Option<PathBuf>,
@@ -30,15 +30,17 @@ pub struct Config {
     pub extensions: Vec<String>,
     #[serde(default = "default_folders")]
     pub folders: Vec<PathBuf>,
+    pub scss_prelude: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            output_file: Default::default(),
-            output_dir: Default::default(),
+            output_file: None,
+            output_dir: None,
             extensions: default_extensions(),
             folders: default_folders(),
+            scss_prelude: None,
         }
     }
 }

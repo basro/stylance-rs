@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     fs::{self, File},
-    io::Write,
+    io::{BufWriter, Write},
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     thread::{self, sleep},
@@ -58,6 +58,7 @@ struct RunConfig {
     output_dir: Option<PathBuf>,
     extensions: Vec<String>,
     folders: Vec<PathBuf>,
+    scss_prelude: Option<String>,
 }
 
 fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
@@ -87,6 +88,7 @@ fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
         output_dir,
         extensions: config.extensions,
         folders,
+        scss_prelude: config.scss_prelude,
     })
 }
 
@@ -119,7 +121,19 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
             fs::create_dir_all(parent)?;
         }
 
-        let mut file = File::create(output_file)?;
+        let mut file = BufWriter::new(File::create(output_file)?);
+
+        if let Some(scss_prelude) = &config.scss_prelude {
+            if output_file
+                .extension()
+                .filter(|ext| ext.to_string_lossy() == "scss")
+                .is_some()
+            {
+                file.write_all(scss_prelude.as_bytes())?;
+                file.write_all(b"\n\n")?;
+            }
+        }
+
         file.write_all(
             modified_css_files
                 .iter()
@@ -167,7 +181,15 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
             new_files.push(new_file_name.clone());
 
             let file_path = output_dir.join(new_file_name);
-            let mut file = File::create(file_path)?;
+            let mut file = BufWriter::new(File::create(file_path)?);
+
+            if let Some(scss_prelude) = &config.scss_prelude {
+                if extension == "scss" {
+                    file.write_all(scss_prelude.as_bytes())?;
+                    file.write_all(b"\n\n")?;
+                }
+            }
+
             file.write_all(modified_css.contents.as_bytes())?;
         }
 
