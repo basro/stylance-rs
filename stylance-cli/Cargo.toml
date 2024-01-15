@@ -15,7 +15,11 @@ walkdir = "2.4.0"
 stylance-core = { workspace = true }
 clap = { version = "4.4.12", features = ["derive", "cargo"] }
 anyhow = "1.0.79"
-notify = "6.1.1"
+notify = { version = "6.1.1", default-features = false, features = [
+	"macos_kqueue",
+] }
+tokio = { version = "1.35.1", features = ["full"] }
+tokio-stream = "0.1.14"
 
 [[bin]]
 name = "stylance"

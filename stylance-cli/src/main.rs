@@ -2,15 +2,16 @@ use std::{
     borrow::Cow,
     fs::{self, File},
     io::{BufWriter, Write},
-    path::PathBuf,
-    sync::{mpsc, Arc, Mutex},
-    thread::{self, sleep},
+    path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 use stylance_core::load_config;
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
+use tokio::{sync::mpsc, task::spawn_blocking};
+use tokio_stream::{Stream, StreamExt};
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -38,15 +39,16 @@ struct Cli {
     watch: bool,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let run_config = make_run_config(&cli)?;
+    let run_config = make_run_config(&cli).await?;
 
     run(&run_config)?;
 
     if cli.watch {
-        watch(&cli, run_config)?;
+        watch(cli, run_config).await?;
     }
 
     Ok(())
@@ -61,8 +63,9 @@ struct RunConfig {
     scss_prelude: Option<String>,
 }
 
-fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
-    let config = load_config(&cli.manifest_dir)?;
+async fn make_run_config(cli: &Cli) -> anyhow::Result<RunConfig> {
+    let manifest_dir = cli.manifest_dir.clone();
+    let config = spawn_blocking(move || load_config(&manifest_dir)).await??;
 
     let output_file = cli.output_file.clone().or_else(|| {
         config
@@ -207,69 +210,128 @@ fn run(config: &RunConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn watch(cli: &Cli, run_config: RunConfig) -> anyhow::Result<()> {
-    let (run_event_tx, run_event_rx) = mpsc::sync_channel(0);
+fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
+    let (events_tx, events_rx) = mpsc::unbounded_channel();
+    let mut watcher = notify::recommended_watcher({
+        let events_tx = events_tx.clone();
+        move |_| {
+            let _ = events_tx.send(());
+        }
+    })?;
 
-    let run_config = Arc::new(Mutex::new(Arc::new(run_config)));
+    watcher.watch(path, RecursiveMode::NonRecursive)?;
 
-    thread::spawn({
-        let run_config = run_config.clone();
-        move || {
-            while run_event_rx.recv().is_ok() {
-                let run_config = run_config.lock().unwrap().clone();
-                if let Err(e) = run(&run_config) {
+    tokio::spawn(async move {
+        events_tx.closed().await;
+        drop(watcher);
+    });
+
+    Ok(events_rx)
+}
+
+fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver<PathBuf>> {
+    let (events_tx, events_rx) = mpsc::unbounded_channel();
+    let mut watcher = notify::recommended_watcher({
+        let events_tx = events_tx.clone();
+        move |e: notify::Result<Event>| {
+            if let Ok(e) = e {
+                for path in e.paths {
+                    if events_tx.send(path).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    })?;
+
+    for path in paths {
+        watcher.watch(path, RecursiveMode::NonRecursive)?;
+    }
+
+    tokio::spawn(async move {
+        events_tx.closed().await;
+        drop(watcher);
+    });
+
+    Ok(events_rx)
+}
+
+async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> {
+    s.next().await;
+
+    loop {
+        let result = tokio::time::timeout(Duration::from_millis(50), s.next()).await;
+        match result {
+            Ok(Some(_)) => {}
+            Ok(None) => return None,
+            Err(_) => return Some(()),
+        }
+    }
+}
+
+async fn watch(cli: Cli, run_config: RunConfig) -> anyhow::Result<()> {
+    let (run_config_tx, mut run_config) = tokio::sync::watch::channel(Arc::new(run_config));
+
+    // Watch Cargo.toml to update the current run_config.
+    let cargo_toml_events = watch_file(&cli.manifest_dir.join("Cargo.toml").canonicalize()?)?;
+    tokio::spawn(async move {
+        let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
+        while debounced_next(&mut stream).await.is_some() {
+            match make_run_config(&cli).await {
+                Ok(new_config) => {
+                    if run_config_tx.send(Arc::new(new_config)).is_err() {
+                        return;
+                    };
+                }
+                Err(e) => {
                     eprintln!("{e}");
                 }
-                sleep(Duration::from_millis(100));
+            }
+        }
+    });
+
+    // Wait for run_events to run the stylance process.
+    let (run_events_tx, run_events) = mpsc::channel(1);
+    tokio::spawn({
+        let run_config = run_config.clone();
+        async move {
+            let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
+            while (debounced_next(&mut stream).await).is_some() {
+                let run_config = run_config.borrow().clone();
+                spawn_blocking(move || run(&run_config));
             }
         }
     });
 
     loop {
-        let current_run_config = run_config.lock().unwrap().clone();
+        // Watch the folders from the current run_config
+        let mut events = watch_folders(&run_config.borrow().folders)?;
 
-        let cargo_toml_path = cli.manifest_dir.join("Cargo.toml").canonicalize()?;
-
-        let (watch_event_tx, watch_event_rx) = mpsc::channel();
-
-        let mut watcher = notify::recommended_watcher(watch_event_tx)?;
-
-        for folder in &current_run_config.folders {
-            watcher.watch(&cli.manifest_dir.join(folder), RecursiveMode::Recursive)?;
-        }
-
-        watcher.watch(&cargo_toml_path, RecursiveMode::NonRecursive)?;
-
-        'watch_events: while let Ok(Ok(Event { paths, .. })) = watch_event_rx.recv() {
-            for path in paths {
-                let str_path = path.to_string_lossy();
-                if current_run_config
-                    .extensions
-                    .iter()
-                    .any(|ext| str_path.ends_with(ext))
-                {
-                    let _ = run_event_tx.try_send(());
-                    break;
-                }
-
-                if str_path.ends_with("Cargo.toml")
-                    && path
-                        .canonicalize()
-                        .ok()
-                        .filter(|p| *p == cargo_toml_path)
-                        .is_some()
-                {
-                    match make_run_config(cli) {
-                        Ok(new_config) => {
-                            *run_config.lock().unwrap() = Arc::new(new_config);
-                            break 'watch_events;
-                        }
-                        Err(e) => {
-                            eprintln!("{e}");
-                        }
+        // With the events from the watched folder trigger run_events if they match the extensions of the config.
+        let watch_folders = {
+            let run_config = run_config.borrow().clone();
+            let run_events_tx = run_events_tx.clone();
+            async move {
+                while let Some(path) = events.recv().await {
+                    let str_path = path.to_string_lossy();
+                    if run_config
+                        .extensions
+                        .iter()
+                        .any(|ext| str_path.ends_with(ext))
+                    {
+                        let _ = run_events_tx.try_send(());
+                        break;
                     }
                 }
             }
+        };
+
+        // Run until the config has changed
+        tokio::select! {
+            _ = watch_folders => {},
+            _ = run_config.changed() => {
+                let _ = run_events_tx.try_send(()); // Config changed so lets trigger a run
+            },
         }
     }
 }
