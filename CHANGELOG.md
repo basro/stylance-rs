@@ -1,9 +1,15 @@
 # Stylance changelog
 
+## 0.0.10
+
+- Added scss_prelude configuration option that lets you prefix text to the generated scss files.
+- Added debouncing to the stylance cli --watch mode.
+- Fixes an issue where stylance would read files while they were being modified by the text editor resulting in wrong output.
+
 ## 0.0.9
 
+- Added classes! utility macro for joining class names
 - Added JoinClasses trait
-- Added classes! utility macro
 
 ## 0.0.8
 
