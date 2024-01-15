@@ -97,4 +97,9 @@ folders = ["./src/", "./styles/"]
 # bundle
 # defaults to [".module.scss", ".module.css"]
 extensions = [".module.scss", ".module.css"]
+
+# scss_prelude
+# When generating an scss file stylance-cli will prepend this string
+# Useful to include a @use statement to all scss modules.
+scss_prelude = '@use "../path/to/prelude" as *;'
 ```
