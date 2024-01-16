@@ -3,12 +3,12 @@ resolver = "2"
 members = ["stylance", "stylance-cli", "internal/*"]
 
 [workspace.dependencies]
-stylance-core = { path = "./internal/stylance-core", version = "0.0.10" }
-stylance-macros = { path = "./internal/stylance-macros", version = "0.0.10" }
+stylance-core = { path = "./internal/stylance-core", version = "0.0.11" }
+stylance-macros = { path = "./internal/stylance-macros", version = "0.0.11" }
 
 [workspace.package]
 authors = ["Mario Carbajal"]
-version = "0.0.10"
+version = "0.0.11"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/basro/stylance-rs"
 readme = "README.md"
