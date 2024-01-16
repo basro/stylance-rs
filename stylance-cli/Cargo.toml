@@ -18,7 +18,7 @@ anyhow = "1.0.79"
 notify = { version = "6.1.1", default-features = false, features = [
 	"macos_kqueue",
 ] }
-tokio = { version = "1.35.1", features = ["full"] }
+tokio = { version = "1.35.1", features = ["macros", "rt", "sync", "time"] }
 tokio-stream = "0.1.14"
 
 [[bin]]
