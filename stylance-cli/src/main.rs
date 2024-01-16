@@ -298,7 +298,9 @@ async fn watch(cli: Cli, run_config: RunConfig) -> anyhow::Result<()> {
             let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
             while (debounced_next(&mut stream).await).is_some() {
                 let run_config = run_config.borrow().clone();
-                spawn_blocking(move || run(&run_config));
+                if let Ok(Err(e)) = spawn_blocking(move || run(&run_config)).await {
+                    eprintln!("{e}");
+                }
             }
         }
     });
