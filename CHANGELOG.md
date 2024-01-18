@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.0.12
+
+-   Fixes cli watched folders not being relative to the manifest dir.
+
 ## 0.0.11
 
 -   Fixes cli watch mode not printing errors.
