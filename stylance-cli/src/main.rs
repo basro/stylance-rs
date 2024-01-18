@@ -245,7 +245,7 @@ fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver
     })?;
 
     for path in paths {
-        watcher.watch(path, RecursiveMode::NonRecursive)?;
+        watcher.watch(path, RecursiveMode::Recursive)?;
     }
 
     tokio::spawn(async move {
@@ -272,8 +272,10 @@ async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> 
 async fn watch(cli: Cli, run_config: RunConfig) -> anyhow::Result<()> {
     let (run_config_tx, mut run_config) = tokio::sync::watch::channel(Arc::new(run_config));
 
+    let manifest_dir = cli.manifest_dir.clone();
+
     // Watch Cargo.toml to update the current run_config.
-    let cargo_toml_events = watch_file(&cli.manifest_dir.join("Cargo.toml").canonicalize()?)?;
+    let cargo_toml_events = watch_file(&manifest_dir.join("Cargo.toml").canonicalize()?)?;
     tokio::spawn(async move {
         let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
         while debounced_next(&mut stream).await.is_some() {
@@ -307,7 +309,14 @@ async fn watch(cli: Cli, run_config: RunConfig) -> anyhow::Result<()> {
 
     loop {
         // Watch the folders from the current run_config
-        let mut events = watch_folders(&run_config.borrow().folders)?;
+        let mut events = watch_folders(
+            &run_config
+                .borrow()
+                .folders
+                .iter()
+                .map(|f| manifest_dir.join(f))
+                .collect(),
+        )?;
 
         // With the events from the watched folder trigger run_events if they match the extensions of the config.
         let watch_folders = {
