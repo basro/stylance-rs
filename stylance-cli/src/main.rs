@@ -1,5 +1,7 @@
+use anyhow::bail;
 use std::{
     borrow::Cow,
+    collections::HashMap,
     fs::{self, File},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
@@ -111,6 +113,19 @@ fn run(run_params: &RunParams) -> anyhow::Result<()> {
                         &run_params.config,
                     )?);
                 }
+            }
+        }
+    }
+
+    {
+        let mut map = HashMap::new();
+        for file in modified_css_files.iter() {
+            if let Some(previous_file) = map.insert(&file.hash, file) {
+                bail!(
+                    "The following files had a hash collision:\n{}\n{}\nConsider increasing the hash_len setting.",
+                    file.path.to_string_lossy(),
+                    previous_file.path.to_string_lossy()
+                );
             }
         }
     }
