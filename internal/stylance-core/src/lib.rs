@@ -1,3 +1,4 @@
+mod class_name_pattern;
 mod parse;
 
 use std::{
@@ -8,7 +9,8 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
+use class_name_pattern::ClassNamePattern;
 use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
@@ -21,6 +23,10 @@ fn default_folders() -> Vec<PathBuf> {
     vec![PathBuf::from_str("./src/").expect("path is valid")]
 }
 
+fn default_hash_len() -> usize {
+    7
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -31,6 +37,10 @@ pub struct Config {
     #[serde(default = "default_folders")]
     pub folders: Vec<PathBuf>,
     pub scss_prelude: Option<String>,
+    #[serde(default = "default_hash_len")]
+    pub hash_len: usize,
+    #[serde(default)]
+    pub class_name_pattern: ClassNamePattern,
 }
 
 impl Default for Config {
@@ -41,6 +51,8 @@ impl Default for Config {
             extensions: default_extensions(),
             folders: default_folders(),
             scss_prelude: None,
+            hash_len: default_hash_len(),
+            class_name_pattern: Default::default(),
         }
     }
 }
@@ -87,13 +99,13 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     };
 
     if config.extensions.iter().any(|e| e.is_empty()) {
-        return Err(anyhow!("Stylance config extensions can't be empty strings"));
+        bail!("Stylance config extensions can't be empty strings");
     }
 
     Ok(config)
 }
 
-fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
+fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
     let manifest_dir = manifest_dir.canonicalize()?;
     let css_file = css_file.canonicalize()?;
 
@@ -107,12 +119,8 @@ fn make_hash(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<String> {
 
     let hash = hash_string(&relative_path_str);
     let mut hash_str = format!("{hash:x}");
-    hash_str.truncate(7);
+    hash_str.truncate(hash_len);
     Ok(hash_str)
-}
-
-fn modify_class(class: &str, hash_str: &str) -> String {
-    format!("{class}-{hash_str}")
 }
 
 pub struct ModifyCssResult {
@@ -124,8 +132,9 @@ pub struct ModifyCssResult {
 pub fn load_and_modify_css(
     manifest_dir: &Path,
     css_file: &Path,
+    config: &Config,
 ) -> anyhow::Result<ModifyCssResult> {
-    let hash_str = make_hash(manifest_dir, css_file)?;
+    let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
     let fragments = parse::parse_css(&css_file_contents).map_err(|e| anyhow!("{e}"))?;
@@ -135,7 +144,10 @@ pub fn load_and_modify_css(
 
     for fragment in fragments {
         let (span, replace) = match fragment {
-            CssFragment::Class(class) => (class, Cow::Owned(modify_class(class, &hash_str))),
+            CssFragment::Class(class) => (
+                class,
+                Cow::Owned(config.class_name_pattern.apply(class, &hash_str)),
+            ),
             CssFragment::Global(Global { inner, outer }) => (outer, Cow::Borrowed(inner)),
         };
 
@@ -154,8 +166,12 @@ pub fn load_and_modify_css(
     })
 }
 
-pub fn get_classes(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<(String, Vec<Class>)> {
-    let hash_str = make_hash(manifest_dir, css_file)?;
+pub fn get_classes(
+    manifest_dir: &Path,
+    css_file: &Path,
+    config: &Config,
+) -> anyhow::Result<(String, Vec<Class>)> {
+    let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
 
     let css_file_contents = fs::read_to_string(css_file)?;
 
@@ -180,7 +196,7 @@ pub fn get_classes(manifest_dir: &Path, css_file: &Path) -> anyhow::Result<(Stri
             .into_iter()
             .map(|class| Class {
                 original_name: class.to_owned(),
-                hashed_name: modify_class(class, &hash_str),
+                hashed_name: config.class_name_pattern.apply(class, &hash_str),
             })
             .collect(),
     ))

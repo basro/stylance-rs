@@ -12,7 +12,8 @@ fn try_import_style_classes_with_path(
     manifest_path: &Path,
     file_path: &Path,
 ) -> anyhow::Result<TokenStream> {
-    let (_, classes) = stylance_core::get_classes(manifest_path, file_path)?;
+    let config = stylance_core::load_config(manifest_path)?;
+    let (_, classes) = stylance_core::get_classes(manifest_path, file_path, &config)?;
 
     let binding = file_path.canonicalize().unwrap();
     let full_path = binding.to_string_lossy();
