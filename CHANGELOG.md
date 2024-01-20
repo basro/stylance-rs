@@ -2,8 +2,9 @@
 
 ## 0.1.0
 
--   Adds hash_len configuration option that controls the length of the hash in generated class names.
--   Adds class_name_pattern configuration option to control the generated class name pattern.
+-   Added `hash_len` configuration option that controls the length of the hash in generated class names.
+-   Added `class_name_pattern` configuration option to control the generated class name pattern.
+-   Added detection of hash collisions to stylance cli, it will error when detected. This allows reducing the hash_len without fear of it silently colliding.
 
 ## 0.0.12
 
