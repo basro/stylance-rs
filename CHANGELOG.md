@@ -1,5 +1,10 @@
 # Stylance changelog
 
+## 0.1.0
+
+-   Adds hash_len configuration option that controls the length of the hash in generated class names.
+-   Adds class_name_pattern configuration option to control the generated class name pattern.
+
 ## 0.0.12
 
 -   Fixes cli watched folders not being relative to the manifest dir.
