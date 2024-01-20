@@ -4,8 +4,8 @@ Stylance-cli is the build tool for [Stylance](https://github.com/basro/stylance-
 
 It reads your css module files and transforms them in the following way:
 
-- Adds a hash as suffix to every classname found. (`.class` will become `.class-63gi2cY`)
-- Removes any instance of `:global(contents)` while leaving contents intact.
+-   Adds a hash as suffix to every classname found. (`.class` will become `.class-63gi2cY`)
+-   Removes any instance of `:global(contents)` while leaving contents intact.
 
 ## Installation
 
@@ -31,7 +31,7 @@ Resulting `./bundled.scss`:
 
 ```css
 .header-f45126d {
-  background-color: red;
+    background-color: red;
 }
 ```
 
@@ -102,4 +102,18 @@ extensions = [".module.scss", ".module.css"]
 # When generating an scss file stylance-cli will prepend this string
 # Useful to include a @use statement to all scss modules.
 scss_prelude = '@use "../path/to/prelude" as *;'
+
+# hash_len
+# Controls how long the hash name used in scoped classes should be.
+# It is safe to lower this as much as you want, stylance cli will produce an
+# error if two files end up with colliding hashes.
+# defaults to 7
+hash_len = 7
+
+# class_name_pattern
+# Controls the shape of the transformed scoped class names.
+# [name] will be replaced with the original class name
+# [hash] will be replaced with the hash of css module file path.
+# defaults to "[name]-[hash]"
+class_name_pattern = "my-project-[name]-[hash]"
 ```
