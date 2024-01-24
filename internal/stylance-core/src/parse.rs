@@ -1,5 +1,5 @@
 use winnow::{
-    combinator::{alt, cut_err, delimited, fold_repeat, peek, preceded, terminated},
+    combinator::{alt, cut_err, delimited, fold_repeat, opt, peek, preceded, terminated},
     error::{ContextError, ParseError},
     stream::{AsChar, ContainsToken, Range},
     token::{none_of, one_of, tag, take_till, take_until0, take_while},
@@ -24,7 +24,7 @@ pub enum CssFragment<'s> {
 }
 
 pub fn parse_css(input: &str) -> Result<Vec<CssFragment>, ParseError<&str, ContextError>> {
-    style_rule_list.parse(input)
+    style_rule_block_contents.parse(input)
 }
 
 pub fn recognize_repeat<'s, O>(
@@ -142,7 +142,7 @@ fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
 
 fn declaration<'s>(input: &mut &'s str) -> PResult<&'s str> {
     (
-        identifier,
+        (opt('$'), identifier),
         ws,
         ':',
         terminated(
@@ -223,22 +223,6 @@ fn unknown_block_contents<'s>(input: &mut &'s str) -> PResult<&'s str> {
     .parse_next(input)
 }
 
-fn style_rule_list<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
-    terminated(
-        fold_repeat(
-            0..,
-            terminated(alt((style_rule, at_rule)), ws),
-            Vec::new,
-            |mut acc, mut item| {
-                acc.append(&mut item);
-                acc
-            },
-        ),
-        ws,
-    )
-    .parse_next(input)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +273,7 @@ mod tests {
         .baz {
             color: blue;
         }
+        $some-scss-var: 10px;
         @some-at-rule blah blah;
         @media blah .blah {
             .moo {
@@ -309,41 +294,6 @@ mod tests {
         );
 
         assert_eq!(input, "END");
-    }
-
-    #[test]
-    fn test_style_rule_list() {
-        let mut input = "
-        .foo.bar :global(.global) {
-            background-color \t\r\n : red;
-            color: blue;
-        }
-        
-        .baz.moo {
-            color: red;
-            .rad {
-                color: red;
-            }
-        }
-    ";
-
-        let r = style_rule_list.parse_next(&mut input);
-        assert_eq!(
-            r,
-            Ok(vec![
-                CssFragment::Class("foo"),
-                CssFragment::Class("bar"),
-                CssFragment::Global(Global {
-                    inner: ".global",
-                    outer: ":global(.global)"
-                }),
-                CssFragment::Class("baz"),
-                CssFragment::Class("moo"),
-                CssFragment::Class("rad"),
-            ])
-        );
-
-        assert!(input.is_empty());
     }
 
     #[test]
@@ -445,7 +395,7 @@ mod tests {
         @debug 1+2 * 3==1+(2 * 3); // true
         ";
 
-        let r = style_rule_list.parse_next(&mut input);
+        let r = style_rule_block_contents.parse_next(&mut input);
         assert_eq!(
             r,
             Ok(vec![

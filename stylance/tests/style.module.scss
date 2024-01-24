@@ -47,12 +47,15 @@ div.style1.style2[value="thing"] {
 	color: red;
 }
 
+$some-scss-variable: 10px; // Scss variable declarations in top scope.
+
 .style5 // comment in between selector
 
 .style6
 
 /* comment in between selector */
 .style7 {
+	$some-scss-variable: 10px; // Scss variable declarations inside style rules block.
 	color: red;
 }
 
