@@ -63,3 +63,8 @@ $some-scss-variable: 10px; // Scss variable declarations in top scope.
 	// Repeated style
 	color: blue;
 }
+
+// scss placeholder class should parse
+%scss-class {
+	color: red;
+}
