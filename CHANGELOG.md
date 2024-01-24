@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.1.1
+
+-   Fixed the parser rejecting syntax of scss variable declarations (eg `$my-var: 10px;`).
+
 ## 0.1.0
 
 -   Added `hash_len` configuration option that controls the length of the hash in generated class names.
