@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use stylance_core::{load_config, Config};
+use stylance_core::{load_config, Config, ModifyCssResult};
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
@@ -118,6 +118,7 @@ fn run(run_params: &RunParams) -> anyhow::Result<()> {
     }
 
     {
+        // Verify that there are no hash collisions
         let mut map = HashMap::new();
         for file in modified_css_files.iter() {
             if let Some(previous_file) = map.insert(&file.hash, file) {
@@ -128,6 +129,17 @@ fn run(run_params: &RunParams) -> anyhow::Result<()> {
                 );
             }
         }
+    }
+
+    {
+        // sort by (filename, path)
+        fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
+            (
+                a.path.file_name().expect("should be a file"),
+                &a.normalized_path_str,
+            )
+        }
+        modified_css_files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
     }
 
     if let Some(output_file) = &run_params.config.output_file {

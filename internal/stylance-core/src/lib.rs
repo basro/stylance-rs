@@ -105,17 +105,22 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     Ok(config)
 }
 
-fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
-    let manifest_dir = manifest_dir.canonicalize()?;
-    let css_file = css_file.canonicalize()?;
+fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<String> {
+    let base = base.canonicalize()?;
+    let subpath = subpath.canonicalize()?;
 
-    let relative_path_str = css_file
-        .strip_prefix(manifest_dir)
+    let relative_path_str = subpath
+        .strip_prefix(base)
         .context("css file should be inside manifest_dir")?
         .to_string_lossy();
 
     #[cfg(target_os = "windows")]
     let relative_path_str = relative_path_str.replace('\\', "/");
+    Ok(relative_path_str)
+}
+
+fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
+    let relative_path_str = normalized_relative_path(manifest_dir, css_file)?;
 
     let hash = hash_string(&relative_path_str);
     let mut hash_str = format!("{hash:x}");
@@ -125,6 +130,7 @@ fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> anyhow::R
 
 pub struct ModifyCssResult {
     pub path: PathBuf,
+    pub normalized_path_str: String,
     pub hash: String,
     pub contents: String,
 }
@@ -161,6 +167,7 @@ pub fn load_and_modify_css(
 
     Ok(ModifyCssResult {
         path: css_file.to_owned(),
+        normalized_path_str: normalized_relative_path(manifest_dir, css_file)?,
         hash: hash_str,
         contents: new_file,
     })
