@@ -68,3 +68,15 @@ $some-scss-variable: 10px; // Scss variable declarations in top scope.
 %scss-class {
 	color: red;
 }
+
+@layer test-layer {
+	.style8 {
+		color: red;
+	}
+}
+
+@layer test-layer2;
+
+@layer;
+
+//eof

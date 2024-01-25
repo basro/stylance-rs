@@ -204,12 +204,19 @@ fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
         return Ok(vec![]);
     }
 
-    if identifier == "media" {
-        cut_err(terminated(style_rule_block_contents, '}')).parse_next(input)
-    } else {
-        cut_err(terminated(unknown_block_contents, '}')).parse_next(input)?;
-        Ok(vec![])
+    match identifier {
+        "media" | "layer" => cut_err(terminated(style_rule_block_contents, '}')).parse_next(input),
+        _ => {
+            cut_err(terminated(unknown_block_contents, '}')).parse_next(input)?;
+            Ok(vec![])
+        }
     }
+    // if identifier == "media" {
+    //     cut_err(terminated(style_rule_block_contents, '}')).parse_next(input)
+    // } else {
+    //     cut_err(terminated(unknown_block_contents, '}')).parse_next(input)?;
+    //     Ok(vec![])
+    // }
 }
 
 fn unknown_block_contents<'s>(input: &mut &'s str) -> PResult<&'s str> {
@@ -360,6 +367,35 @@ mod tests {
     }
 
     #[test]
+    fn test_at_rule_layer() {
+        let mut input = "@layer test {
+        .foo {
+            background-color: red;
+        }
+
+        .bar {
+            color: blue;
+
+            .baz {
+                color: green;
+            }
+        }
+    }";
+
+        let r = at_rule.parse_next(&mut input);
+        assert_eq!(
+            r,
+            Ok(vec![
+                CssFragment::Class("foo"),
+                CssFragment::Class("bar"),
+                CssFragment::Class("baz")
+            ])
+        );
+
+        assert!(input.is_empty());
+    }
+
+    #[test]
     fn test_top_level() {
         let mut input = "// tool.module.scss
 
@@ -375,6 +411,14 @@ mod tests {
                 color: red;
             }
         }
+
+        @layer {
+            .foo {
+                color: blue;
+            }
+        }
+
+        @layer foo;
 
         @debug 1+2 * 3==1+(2 * 3); // true
 
@@ -400,6 +444,7 @@ mod tests {
             r,
             Ok(vec![
                 CssFragment::Class("default_border"),
+                CssFragment::Class("foo"),
                 CssFragment::Class("foo"),
                 CssFragment::Class("container"),
                 CssFragment::Class("bar"),
