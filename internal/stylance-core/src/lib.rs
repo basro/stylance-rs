@@ -109,13 +109,15 @@ fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<Strin
     let base = base.canonicalize()?;
     let subpath = subpath.canonicalize()?;
 
-    let relative_path_str = subpath
+    let relative_path_str: String = subpath
         .strip_prefix(base)
         .context("css file should be inside manifest_dir")?
-        .to_string_lossy();
+        .to_string_lossy()
+        .into();
 
     #[cfg(target_os = "windows")]
     let relative_path_str = relative_path_str.replace('\\', "/");
+
     Ok(relative_path_str)
 }
 
