@@ -1,5 +1,10 @@
 # Stylance changelog
 
+## 0.2.0
+
+-   Add support for @layer at-rules
+-   Made the order in which the modified css modules are output be well defined; Sorted by (filename, relativepath). This is important for rules with equal specificity or for cascade layers defined in the css modules.
+
 ## 0.1.1
 
 -   Fixed the parser rejecting syntax of scss variable declarations (eg `$my-var: 10px;`).
