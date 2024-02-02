@@ -34,7 +34,7 @@ fn main() {
     // Requires rust nightly toolchain
     #[cfg(feature = "nightly")]
     {
-        stylance::import_style!(rel_path_style, "style1.module.scss");
+        stylance::import_style!(#[allow(dead_code)] rel_path_style, "style1.module.scss");
         println!(
             "rel_path_style 'style1.module.scss' \nheader: {}",
             rel_path_style::header
