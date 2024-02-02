@@ -1,5 +1,10 @@
 # Stylance changelog
 
+## 0.3.0
+
+- Generated class name constants will now properly warn if they are unused.
+- Added attributes syntax to `import_style!` and `import_crate_style!` macros.
+
 ## 0.2.0
 
 -   Add support for @layer at-rules
