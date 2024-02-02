@@ -4,15 +4,7 @@ use stylance::{classes, import_crate_style};
 
 use module::style as module_style;
 
-// This expands to
-// mod my_style {
-//     pub const contents: &str = "contents-f45126d";
-//     pub const header: &str = "header-f45126d";
-// }
-import_crate_style!(
-    my_style,
-    "examples/usage/style1.module.scss" // Path is relative to the crate's Cargo.toml file
-);
+import_crate_style!(my_style, "examples/usage/style1.module.scss");
 
 fn main() {
     println!(
@@ -31,6 +23,7 @@ fn main() {
         classes!(
             "some-global-class",
             my_style::header,
+            my_style::contents,
             module_style::header,
             (active_tab == 0).then_some(my_style::active) // conditionally activate a global style
         ),

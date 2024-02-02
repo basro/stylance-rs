@@ -150,13 +150,8 @@ pub mod internal {
 #[cfg_attr(docsrs, doc(cfg(feature = "nightly")))]
 #[macro_export]
 macro_rules! import_style {
-    ($ident:ident, $str:expr) => {
-        mod $ident {
-            ::stylance::internal::import_style_classes_rel!($str);
-        }
-    };
-    (pub $ident:ident, $str:expr) => {
-        pub mod $ident {
+    ($(#[$meta:meta])* $vis:vis $ident:ident, $str:expr) => {
+        $(#[$meta])* $vis mod $ident {
             ::stylance::internal::import_style_classes_rel!($str);
         }
     };
@@ -192,13 +187,8 @@ macro_rules! import_style {
 /// ```
 #[macro_export]
 macro_rules! import_crate_style {
-    ($ident:ident, $str:expr) => {
-        mod $ident {
-            ::stylance::internal::import_style_classes!($str);
-        }
-    };
-    (pub $ident:ident, $str:expr) => {
-        pub mod $ident {
+    ($(#[$meta:meta])* $vis:vis $ident:ident, $str:expr) => {
+        $(#[$meta])* $vis mod $ident {
             ::stylance::internal::import_style_classes!($str);
         }
     };

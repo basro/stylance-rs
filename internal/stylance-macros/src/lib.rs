@@ -5,12 +5,13 @@ use std::{env, path::Path};
 use anyhow::Context as _;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{parse_macro_input, LitStr};
 
 fn try_import_style_classes_with_path(
     manifest_path: &Path,
     file_path: &Path,
+    identifier_span: Span,
 ) -> anyhow::Result<TokenStream> {
     let config = stylance_core::load_config(manifest_path)?;
     let (_, classes) = stylance_core::get_classes(manifest_path, file_path, &config)?;
@@ -20,15 +21,15 @@ fn try_import_style_classes_with_path(
 
     let identifiers = classes
         .iter()
-        .map(|class| Ident::new(&class.original_name.replace('-', "_"), Span::call_site()))
+        .map(|class| Ident::new(&class.original_name.replace('-', "_"), identifier_span))
         .collect::<Vec<_>>();
 
     let output_fields = classes.iter().zip(identifiers).map(|(class, class_ident)| {
         let class_str = &class.hashed_name;
-        quote! {
+        quote_spanned!(identifier_span =>
             #[allow(non_upper_case_globals)]
             pub const #class_ident: &str = #class_str;
-        }
+        )
     });
 
     Ok(quote! {
@@ -44,7 +45,7 @@ fn try_import_style_classes(input: &LitStr) -> anyhow::Result<TokenStream> {
     let manifest_path = Path::new(&manifest_dir_env);
     let file_path = manifest_path.join(Path::new(&input.value()));
 
-    try_import_style_classes_with_path(manifest_path, &file_path)
+    try_import_style_classes_with_path(manifest_path, &file_path, input.span())
 }
 
 #[proc_macro]
@@ -71,7 +72,7 @@ fn try_import_style_classes_rel(input: &LitStr) -> anyhow::Result<TokenStream> {
         .expect("No current path")
         .join(input.value());
 
-    try_import_style_classes_with_path(manifest_path, &file_path)
+    try_import_style_classes_with_path(manifest_path, &file_path, input.span())
 }
 
 #[cfg(feature = "nightly")]
