@@ -45,7 +45,7 @@ fn test_import_style() {
     assert_eq!(style::nested_style, "nested-style-a331da9");
 
     mod some_module {
-        stylance::import_style!(pub style, "style.module.scss");
+        stylance::import_style!(#[allow(dead_code)] pub style, "style.module.scss");
     }
 
     assert_eq!(some_module::style::style1, "style1-a331da9");
