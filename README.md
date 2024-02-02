@@ -4,7 +4,9 @@ Stylance is a library and cli tool for working with scoped CSS in rust.
 
 **Features:**
 
--   Import hashed class names from css files into your rust code as string constants. Trying to use a class name that doesn't exist in the css file becomes an error in rust.
+-   Import hashed class names from css files into your rust code as string constants.
+    - Trying to use a class name that doesn't exist in the css file becomes an error.
+    - Unused class names become warnings.
 -   Bundle your css module files into a single output css file with all the class names transformed to include a hash (by using stylance cli).
 -   Class name hashes are deterministic and based on the relative path between the css file and your crate's manifest dir (where the Cargo.toml resides)
 -   CSS Bundle generation is independent of the rust build process, allowing for blazingly fast iteration when modifying the contents of a css style rule.
@@ -69,6 +71,23 @@ this will transform to:
 ```
 
 .my_scoped_class got the module hash attached but .paragraph was left alone while the `:global()` was removed.
+
+### Unused classname warnings
+
+The import style macros will crate constants which, if left unused, will produce warnings.
+
+This is helpful if you don't want to have css classes left unused but you are able to silence this warning by adding `#[allow(dead_code)]` before the module identifier in the macro.
+
+Example:
+```rust
+import_crate_style!(#[allow(dead_code)] my_style, "src/component/card/card.module.scss");
+```
+
+Any attribute is allowed, if you want to deny instead you can do it too:
+
+```rust
+import_crate_style!(#[deny(dead_code)] my_style, "src/component/card/card.module.scss");
+```
 
 ### Nightly feature
 
