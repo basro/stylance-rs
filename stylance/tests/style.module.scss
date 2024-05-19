@@ -79,4 +79,14 @@ $some-scss-variable: 10px; // Scss variable declarations in top scope.
 
 @layer;
 
+@container (width > 400px) {
+	h2 {
+		font-size: 1.5em;
+	}
+
+	.style9 {
+		font-size: 1.5em;
+	}
+}
+
 //eof

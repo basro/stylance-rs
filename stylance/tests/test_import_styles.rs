@@ -12,6 +12,7 @@ fn test_import_crate_style() {
     assert_eq!(style::style6, "style6-a331da9");
     assert_eq!(style::style7, "style7-a331da9");
     assert_eq!(style::style8, "style8-a331da9");
+    assert_eq!(style::style9, "style9-a331da9");
 
     assert_eq!(style::style_with_dashes, "style-with-dashes-a331da9");
     assert_eq!(style::nested_style, "nested-style-a331da9");
@@ -40,6 +41,7 @@ fn test_import_style() {
     assert_eq!(style::style6, "style6-a331da9");
     assert_eq!(style::style7, "style7-a331da9");
     assert_eq!(style::style8, "style8-a331da9");
+    assert_eq!(style::style9, "style9-a331da9");
 
     assert_eq!(style::style_with_dashes, "style-with-dashes-a331da9");
     assert_eq!(style::nested_style, "nested-style-a331da9");
