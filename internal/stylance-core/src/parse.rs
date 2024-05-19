@@ -205,7 +205,7 @@ fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     }
 
     match identifier {
-        "media" | "layer" => cut_err(terminated(style_rule_block_contents, '}')).parse_next(input),
+        "media" | "layer" | "container" => cut_err(terminated(style_rule_block_contents, '}')).parse_next(input),
         _ => {
             cut_err(terminated(unknown_block_contents, '}')).parse_next(input)?;
             Ok(vec![])
@@ -287,6 +287,11 @@ mod tests {
                 color: red;
             }
         }
+        @container (width > 700px) {
+            .zoo {
+                color: blue;
+            }
+        }
     }END";
 
         let r = style_rule.parse_next(&mut input);
@@ -296,7 +301,8 @@ mod tests {
                 CssFragment::Class("foo"),
                 CssFragment::Class("bar"),
                 CssFragment::Class("baz"),
-                CssFragment::Class("moo")
+                CssFragment::Class("moo"),
+                CssFragment::Class("zoo")
             ])
         );
 
