@@ -78,7 +78,7 @@ async fn make_run_params(cli: &Cli) -> anyhow::Result<RunParams> {
         .or_else(|| config.output_dir.as_ref().map(|p| cli.manifest_dir.join(p)));
 
     if !cli.folder.is_empty() {
-        config.folders = cli.folder.clone();
+        config.folders.clone_from(&cli.folder);
     }
 
     Ok(RunParams {
