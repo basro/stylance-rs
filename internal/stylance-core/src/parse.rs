@@ -205,7 +205,9 @@ fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     }
 
     match identifier {
-        "media" | "layer" | "container" => cut_err(terminated(style_rule_block_contents, '}')).parse_next(input),
+        "media" | "layer" | "container" => {
+            cut_err(terminated(style_rule_block_contents, '}')).parse_next(input)
+        }
         _ => {
             cut_err(terminated(unknown_block_contents, '}')).parse_next(input)?;
             Ok(vec![])
