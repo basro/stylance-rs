@@ -58,6 +58,16 @@ fn block_comment<'s>(input: &mut &'s str) -> PResult<&'s str> {
         .parse_next(input)
 }
 
+// matches a sass interpolation of the form #{...}
+fn sass_interpolation<'s>(input: &mut &'s str) -> PResult<&'s str> {
+    (
+        "#{",
+        cut_err(terminated(take_till(1.., ('{', '}', '\n')), '}')),
+    )
+        .recognize()
+        .parse_next(input)
+}
+
 fn identifier<'s>(input: &mut &'s str) -> PResult<&'s str> {
     (
         one_of(('_', '-', AsChar::is_alpha)),
@@ -114,8 +124,10 @@ pub fn stuff_till<'s>(
             string.void(),
             block_comment.void(),
             line_comment.void(),
+            sass_interpolation.void(),
             '/'.void(),
-            take_till(1.., ('\'', '"', '/', list)).void(),
+            '#'.void(),
+            take_till(1.., ('\'', '"', '/', '#', list)).void(),
         )),
     )
 }
@@ -461,5 +473,28 @@ mod tests {
 
         println!("{input}");
         assert!(input.is_empty());
+    }
+
+    #[test]
+    fn test_sass_interpolation() {
+        let mut input = "#{$test-test}END";
+
+        let r = sass_interpolation.parse_next(&mut input);
+        assert_eq!(r, Ok("#{$test-test}"));
+
+        assert_eq!(input, "END");
+
+        let mut input = "#{$test-test
+        }END";
+        let r = sass_interpolation.parse_next(&mut input);
+        assert!(r.is_err());
+
+        let mut input = "#{$test-test";
+        let r = sass_interpolation.parse_next(&mut input);
+        assert!(r.is_err());
+
+        let mut input = "#{$test-te{st}";
+        let r = sass_interpolation.parse_next(&mut input);
+        assert!(r.is_err());
     }
 }
