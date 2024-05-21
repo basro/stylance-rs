@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.5.0
+
+-   Added support sass interpolation syntax in at rules and many other places.
+
 ## 0.4.0
 
 -   Added support for @container at rules
