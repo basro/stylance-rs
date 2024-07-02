@@ -93,7 +93,7 @@ fn run(run_params: &RunParams) -> anyhow::Result<()> {
     let mut modified_css_files = Vec::new();
 
     for folder in &run_params.config.folders {
-        for (entry, meta) in WalkDir::new(&run_params.manifest_dir.join(folder))
+        for (entry, meta) in WalkDir::new(run_params.manifest_dir.join(folder))
             .into_iter()
             .filter_map(|e| e.ok())
             .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))
