@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.5.1
+
+-   Fix nightly `import_style` macro panic when it is run by rust analyzer (PR #4).
+
 ## 0.5.0
 
 -   Added support sass interpolation syntax in at rules and many other places.
