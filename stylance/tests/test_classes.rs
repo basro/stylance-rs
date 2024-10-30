@@ -1,18 +1,18 @@
 #[test]
 fn test_join_classes() {
-    use stylance::{JoinClasses, NormalizedClass};
+    use stylance::JoinClasses;
 
     assert_eq!(
-        ([
-            Into::<NormalizedClass>::into("one"),
-            Some("two").into(),
-            false.then_some("three").into(),
-            true.then_some("four").into(),
-            (&String::from("five")).into(),
-            Some(&String::from("six")).into(),
-            (&(&["seven".into(), "eight".into()]).join_classes()).into(),
-        ])
-        .join_classes(),
+        (
+            "one",
+            Some("two"),
+            false.then_some("three"),
+            true.then_some("four"),
+            &String::from("five"),
+            Some(&String::from("six")),
+            &("seven", "eight").join_classes()
+        )
+            .join_classes(),
         "one two four five six seven eight"
     );
 }

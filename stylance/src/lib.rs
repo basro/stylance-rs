@@ -59,12 +59,54 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub struct NormalizedClass<'a>(pub Option<&'a str>);
+
 #[doc(hidden)]
 pub mod internal {
     pub use stylance_macros::*;
-}
 
-pub struct NormalizedClass<'a>(pub Option<&'a str>);
+    pub fn normalize_option_str<'a>(
+        value: impl Into<crate::NormalizedClass<'a>>,
+    ) -> Option<&'a str> {
+        value.into().0
+    }
+
+    #[inline(always)]
+    fn join_opt_str_iter<'a, Iter>(iter: &mut Iter, length: usize) -> String
+    where
+        Iter: Iterator<Item = &'a str> + Clone,
+    {
+        let first = match iter.next() {
+            Some(first) => first,
+            None => return String::new(),
+        };
+
+        let head_size = first.len();
+        let tail_size = iter.clone().map(|v| v.len()).sum::<usize>();
+        let boundaries_size = length - 1;
+        let size = head_size + tail_size + boundaries_size;
+
+        let mut result = String::with_capacity(size);
+        result.push_str(first);
+
+        for v in iter {
+            result.push(' ');
+            result.push_str(v);
+        }
+
+        result
+    }
+
+    pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
+        let mut iter = slice.iter().flat_map(|c| *c);
+        join_opt_str_iter(&mut iter, slice.len())
+    }
+
+    pub fn join_normalized_class_slice(slice: &[crate::NormalizedClass<'_>]) -> String {
+        let mut iter = slice.iter().flat_map(|c| c.0);
+        join_opt_str_iter(&mut iter, slice.len())
+    }
+}
 
 impl<'a> From<&'a str> for NormalizedClass<'a> {
     fn from(value: &'a str) -> Self {
@@ -204,18 +246,92 @@ pub trait JoinClasses {
     fn join_classes(self) -> String;
 }
 
-impl<'a, T> JoinClasses for T
-where
-    T: AsRef<[NormalizedClass<'a>]>,
-{
+impl<'a> JoinClasses for &[NormalizedClass<'a>] {
     fn join_classes(self) -> String {
-        self.as_ref()
-            .iter()
-            .filter_map(|x| x.0)
-            .collect::<Vec<_>>()
-            .join(" ")
+        internal::join_normalized_class_slice(self)
     }
 }
+
+macro_rules! impl_join_classes_for_tuples {
+    (($($types:ident),*), ($($idx:tt),*)) => {
+            impl<'a, $($types),*> JoinClasses for ($($types,)*)
+            where
+                $($types: Into<NormalizedClass<'a>>),*
+            {
+                fn join_classes(self) -> String {
+                    let list = &[
+                        $(internal::normalize_option_str(self.$idx)),*
+                    ];
+                    internal::join_opt_str_slice(list)
+                }
+            }
+    };
+}
+
+impl_join_classes_for_tuples!(
+    (T1, T2), //
+    (0, 1)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3), //
+    (0, 1, 2)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4), //
+    (0, 1, 2, 3)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5), //
+    (0, 1, 2, 3, 4)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6), //
+    (0, 1, 2, 3, 4, 5)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7), //
+    (0, 1, 2, 3, 4, 5, 6)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8), //
+    (0, 1, 2, 3, 4, 5, 6, 7)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+);
+impl_join_classes_for_tuples!(
+    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+);
 
 /// Utility macro for joining multiple class names.
 ///
@@ -241,6 +357,6 @@ where
 macro_rules! classes {
     () => { "" };
     ($($exp:expr),+) => {
-        ::stylance::JoinClasses::join_classes([$($exp.into()),*])
+        ::stylance::JoinClasses::join_classes([$($exp.into()),*].as_slice())
     };
 }
