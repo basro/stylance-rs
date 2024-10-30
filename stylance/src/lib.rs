@@ -59,10 +59,13 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub struct NormalizedClass<'a>(pub Option<&'a str>);
-
 #[doc(hidden)]
 pub mod internal {
+    /// MaybeStr Wraps an Option<&str> and implements From trait for various
+    /// types.
+    /// Used by JoinClasses and the classes! macro to accept various types.
+    pub struct MaybeStr<'a>(Option<&'a str>);
+
     pub use stylance_macros::*;
 
     fn join_opt_str_iter<'a, Iter>(iter: &mut Iter) -> String
@@ -88,39 +91,39 @@ pub mod internal {
         result
     }
 
-    pub fn join_normalized_class_slice(slice: &[crate::NormalizedClass<'_>]) -> String {
+    pub fn join_maybe_str_slice(slice: &[MaybeStr<'_>]) -> String {
         let mut iter = slice.iter().flat_map(|c| c.0);
         join_opt_str_iter(&mut iter)
     }
-}
 
-impl<'a> From<&'a str> for NormalizedClass<'a> {
-    fn from(value: &'a str) -> Self {
-        NormalizedClass::<'a>(Some(value))
+    impl<'a> From<&'a str> for MaybeStr<'a> {
+        fn from(value: &'a str) -> Self {
+            MaybeStr::<'a>(Some(value))
+        }
     }
-}
 
-impl<'a> From<&'a String> for NormalizedClass<'a> {
-    fn from(value: &'a String) -> Self {
-        NormalizedClass::<'a>(Some(value.as_ref()))
+    impl<'a> From<&'a String> for MaybeStr<'a> {
+        fn from(value: &'a String) -> Self {
+            MaybeStr::<'a>(Some(value.as_ref()))
+        }
     }
-}
 
-impl<'a, T> From<Option<&'a T>> for NormalizedClass<'a>
-where
-    T: AsRef<str> + ?Sized,
-{
-    fn from(value: Option<&'a T>) -> Self {
-        Self(value.map(AsRef::as_ref))
+    impl<'a, T> From<Option<&'a T>> for MaybeStr<'a>
+    where
+        T: AsRef<str> + ?Sized,
+    {
+        fn from(value: Option<&'a T>) -> Self {
+            Self(value.map(AsRef::as_ref))
+        }
     }
-}
 
-impl<'a, T> From<&'a Option<T>> for NormalizedClass<'a>
-where
-    T: AsRef<str>,
-{
-    fn from(value: &'a Option<T>) -> Self {
-        Self(value.as_ref().map(AsRef::as_ref))
+    impl<'a, T> From<&'a Option<T>> for MaybeStr<'a>
+    where
+        T: AsRef<str>,
+    {
+        fn from(value: &'a Option<T>) -> Self {
+            Self(value.as_ref().map(AsRef::as_ref))
+        }
     }
 }
 
@@ -232,9 +235,9 @@ pub trait JoinClasses {
     fn join_classes(self) -> String;
 }
 
-impl JoinClasses for &[NormalizedClass<'_>] {
+impl JoinClasses for &[internal::MaybeStr<'_>] {
     fn join_classes(self) -> String {
-        internal::join_normalized_class_slice(self)
+        internal::join_maybe_str_slice(self)
     }
 }
 
@@ -242,12 +245,12 @@ macro_rules! impl_join_classes_for_tuples {
     (($($types:ident),*), ($($idx:tt),*)) => {
             impl<'a, $($types),*> JoinClasses for ($($types,)*)
             where
-                $($types: Into<NormalizedClass<'a>>),*
+                $($types: Into<internal::MaybeStr<'a>>),*
             {
                 fn join_classes(self) -> String {
-                    internal::join_normalized_class_slice([
+                    internal::join_maybe_str_slice([
                         $((self.$idx).into()),*
-                    ].as_ref())
+                    ].as_slice())
                 }
             }
     };
