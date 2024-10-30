@@ -62,58 +62,37 @@
 #[doc(hidden)]
 pub mod internal {
     pub use stylance_macros::*;
+}
 
-    pub struct NormalizeOptionStr<'a>(Option<&'a str>);
+pub struct NormalizedClass<'a>(pub Option<&'a str>);
 
-    impl<'a> From<&'a str> for NormalizeOptionStr<'a> {
-        fn from(value: &'a str) -> Self {
-            NormalizeOptionStr::<'a>(Some(value))
-        }
+impl<'a> From<&'a str> for NormalizedClass<'a> {
+    fn from(value: &'a str) -> Self {
+        NormalizedClass::<'a>(Some(value))
     }
+}
 
-    impl<'a> From<&'a String> for NormalizeOptionStr<'a> {
-        fn from(value: &'a String) -> Self {
-            NormalizeOptionStr::<'a>(Some(value.as_ref()))
-        }
+impl<'a> From<&'a String> for NormalizedClass<'a> {
+    fn from(value: &'a String) -> Self {
+        NormalizedClass::<'a>(Some(value.as_ref()))
     }
+}
 
-    impl<'a, T> From<Option<&'a T>> for NormalizeOptionStr<'a>
-    where
-        T: AsRef<str> + ?Sized,
-    {
-        fn from(value: Option<&'a T>) -> Self {
-            Self(value.map(AsRef::as_ref))
-        }
+impl<'a, T> From<Option<&'a T>> for NormalizedClass<'a>
+where
+    T: AsRef<str> + ?Sized,
+{
+    fn from(value: Option<&'a T>) -> Self {
+        Self(value.map(AsRef::as_ref))
     }
+}
 
-    impl<'a, T> From<&'a Option<T>> for NormalizeOptionStr<'a>
-    where
-        T: AsRef<str>,
-    {
-        fn from(value: &'a Option<T>) -> Self {
-            Self(value.as_ref().map(AsRef::as_ref))
-        }
-    }
-
-    pub fn normalize_option_str<'a>(value: impl Into<NormalizeOptionStr<'a>>) -> Option<&'a str> {
-        value.into().0
-    }
-
-    pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
-        let mut iter = slice.iter().flat_map(|c| *c);
-        let first = match iter.next() {
-            Some(first) => first,
-            None => return String::new(),
-        };
-        let size = iter.clone().map(|v| v.len()).sum::<usize>() + slice.len() - 1;
-        let mut result = String::with_capacity(size);
-        result.push_str(first);
-
-        for v in iter {
-            result.push(' ');
-            result.push_str(v);
-        }
-        result
+impl<'a, T> From<&'a Option<T>> for NormalizedClass<'a>
+where
+    T: AsRef<str>,
+{
+    fn from(value: &'a Option<T>) -> Self {
+        Self(value.as_ref().map(AsRef::as_ref))
     }
 }
 
@@ -225,86 +204,18 @@ pub trait JoinClasses {
     fn join_classes(self) -> String;
 }
 
-macro_rules! impl_join_classes_for_tuples {
-    (($($types:ident),*), ($($idx:tt),*)) => {
-            impl<'a, $($types),*> JoinClasses for ($($types,)*)
-            where
-                $($types: Into<internal::NormalizeOptionStr<'a>>),*
-            {
-                fn join_classes(self) -> String {
-                    let list = &[
-                        $(internal::normalize_option_str(self.$idx)),*
-                    ];
-                    internal::join_opt_str_slice(list)
-                }
-            }
-    };
+impl<'a, T> JoinClasses for T
+where
+    T: AsRef<[NormalizedClass<'a>]>,
+{
+    fn join_classes(self) -> String {
+        self.as_ref()
+            .iter()
+            .filter_map(|x| x.0)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
-
-impl_join_classes_for_tuples!(
-    (T1, T2), //
-    (0, 1)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3), //
-    (0, 1, 2)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4), //
-    (0, 1, 2, 3)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5), //
-    (0, 1, 2, 3, 4)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6), //
-    (0, 1, 2, 3, 4, 5)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7), //
-    (0, 1, 2, 3, 4, 5, 6)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8), //
-    (0, 1, 2, 3, 4, 5, 6, 7)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
-);
-impl_join_classes_for_tuples!(
-    (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17),
-    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
-);
 
 /// Utility macro for joining multiple class names.
 ///
@@ -328,7 +239,8 @@ impl_join_classes_for_tuples!(
 /// ```
 #[macro_export]
 macro_rules! classes {
+    () => { "" };
     ($($exp:expr),+) => {
-        ::stylance::JoinClasses::join_classes(($($exp),*))
+        ::stylance::JoinClasses::join_classes([$($exp.into()),*])
     };
 }
