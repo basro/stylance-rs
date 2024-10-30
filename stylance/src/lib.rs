@@ -246,7 +246,7 @@ pub trait JoinClasses {
     fn join_classes(self) -> String;
 }
 
-impl<'a> JoinClasses for &[NormalizedClass<'a>] {
+impl JoinClasses for &[NormalizedClass<'_>] {
     fn join_classes(self) -> String {
         internal::join_normalized_class_slice(self)
     }
