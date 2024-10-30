@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.5.2
+
+-   Added support for any number of arguments to the `classes!` macro. It was previously limited to a maximum of 16 and didn't work for 0 or 1 arguments.
+
 ## 0.5.1
 
 -   Fix nightly `import_style` macro panic when it is run by rust analyzer (PR #4).
