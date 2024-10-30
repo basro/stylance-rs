@@ -72,19 +72,15 @@ pub mod internal {
     }
 
     #[inline(always)]
-    fn join_opt_str_iter<'a, Iter>(iter: &mut Iter, length: usize) -> String
+    fn join_opt_str_iter<'a, Iter>(iter: &mut Iter) -> String
     where
         Iter: Iterator<Item = &'a str> + Clone,
     {
-        let first = match iter.next() {
-            Some(first) => first,
-            None => return String::new(),
+        let Some(first) = iter.next() else {
+            return String::new();
         };
 
-        let head_size = first.len();
-        let tail_size = iter.clone().map(|v| v.len()).sum::<usize>();
-        let boundaries_size = length - 1;
-        let size = head_size + tail_size + boundaries_size;
+        let size = first.len() + iter.clone().map(|v| v.len() + 1).sum::<usize>();
 
         let mut result = String::with_capacity(size);
         result.push_str(first);
@@ -94,17 +90,19 @@ pub mod internal {
             result.push_str(v);
         }
 
+        debug_assert_eq!(result.len(), size);
+
         result
     }
 
     pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
         let mut iter = slice.iter().flat_map(|c| *c);
-        join_opt_str_iter(&mut iter, slice.len())
+        join_opt_str_iter(&mut iter)
     }
 
     pub fn join_normalized_class_slice(slice: &[crate::NormalizedClass<'_>]) -> String {
         let mut iter = slice.iter().flat_map(|c| c.0);
-        join_opt_str_iter(&mut iter, slice.len())
+        join_opt_str_iter(&mut iter)
     }
 }
 
