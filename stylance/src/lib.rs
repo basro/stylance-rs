@@ -65,13 +65,6 @@ pub struct NormalizedClass<'a>(pub Option<&'a str>);
 pub mod internal {
     pub use stylance_macros::*;
 
-    pub fn normalize_option_str<'a>(
-        value: impl Into<crate::NormalizedClass<'a>>,
-    ) -> Option<&'a str> {
-        value.into().0
-    }
-
-    #[inline(always)]
     fn join_opt_str_iter<'a, Iter>(iter: &mut Iter) -> String
     where
         Iter: Iterator<Item = &'a str> + Clone,
@@ -93,11 +86,6 @@ pub mod internal {
         debug_assert_eq!(result.len(), size);
 
         result
-    }
-
-    pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
-        let mut iter = slice.iter().flat_map(|c| *c);
-        join_opt_str_iter(&mut iter)
     }
 
     pub fn join_normalized_class_slice(slice: &[crate::NormalizedClass<'_>]) -> String {
@@ -257,10 +245,9 @@ macro_rules! impl_join_classes_for_tuples {
                 $($types: Into<NormalizedClass<'a>>),*
             {
                 fn join_classes(self) -> String {
-                    let list = &[
-                        $(internal::normalize_option_str(self.$idx)),*
-                    ];
-                    internal::join_opt_str_slice(list)
+                    internal::join_normalized_class_slice([
+                        $((self.$idx).into()),*
+                    ].as_ref())
                 }
             }
     };
