@@ -59,53 +59,33 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub struct NormalizedClass<'a>(pub Option<&'a str>);
+
 #[doc(hidden)]
 pub mod internal {
     pub use stylance_macros::*;
 
-    pub struct NormalizeOptionStr<'a>(Option<&'a str>);
-
-    impl<'a> From<&'a str> for NormalizeOptionStr<'a> {
-        fn from(value: &'a str) -> Self {
-            NormalizeOptionStr::<'a>(Some(value))
-        }
-    }
-
-    impl<'a> From<&'a String> for NormalizeOptionStr<'a> {
-        fn from(value: &'a String) -> Self {
-            NormalizeOptionStr::<'a>(Some(value.as_ref()))
-        }
-    }
-
-    impl<'a, T> From<Option<&'a T>> for NormalizeOptionStr<'a>
-    where
-        T: AsRef<str> + ?Sized,
-    {
-        fn from(value: Option<&'a T>) -> Self {
-            Self(value.map(AsRef::as_ref))
-        }
-    }
-
-    impl<'a, T> From<&'a Option<T>> for NormalizeOptionStr<'a>
-    where
-        T: AsRef<str>,
-    {
-        fn from(value: &'a Option<T>) -> Self {
-            Self(value.as_ref().map(AsRef::as_ref))
-        }
-    }
-
-    pub fn normalize_option_str<'a>(value: impl Into<NormalizeOptionStr<'a>>) -> Option<&'a str> {
+    pub fn normalize_option_str<'a>(
+        value: impl Into<crate::NormalizedClass<'a>>,
+    ) -> Option<&'a str> {
         value.into().0
     }
 
-    pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
-        let mut iter = slice.iter().flat_map(|c| *c);
+    #[inline(always)]
+    fn join_opt_str_iter<'a, Iter>(iter: &mut Iter, length: usize) -> String
+    where
+        Iter: Iterator<Item = &'a str> + Clone,
+    {
         let first = match iter.next() {
             Some(first) => first,
             None => return String::new(),
         };
-        let size = iter.clone().map(|v| v.len()).sum::<usize>() + slice.len() - 1;
+
+        let head_size = first.len();
+        let tail_size = iter.clone().map(|v| v.len()).sum::<usize>();
+        let boundaries_size = length - 1;
+        let size = head_size + tail_size + boundaries_size;
+
         let mut result = String::with_capacity(size);
         result.push_str(first);
 
@@ -113,7 +93,48 @@ pub mod internal {
             result.push(' ');
             result.push_str(v);
         }
+
         result
+    }
+
+    pub fn join_opt_str_slice(slice: &[Option<&str>]) -> String {
+        let mut iter = slice.iter().flat_map(|c| *c);
+        join_opt_str_iter(&mut iter, slice.len())
+    }
+
+    pub fn join_normalized_class_slice(slice: &[crate::NormalizedClass<'_>]) -> String {
+        let mut iter = slice.iter().flat_map(|c| c.0);
+        join_opt_str_iter(&mut iter, slice.len())
+    }
+}
+
+impl<'a> From<&'a str> for NormalizedClass<'a> {
+    fn from(value: &'a str) -> Self {
+        NormalizedClass::<'a>(Some(value))
+    }
+}
+
+impl<'a> From<&'a String> for NormalizedClass<'a> {
+    fn from(value: &'a String) -> Self {
+        NormalizedClass::<'a>(Some(value.as_ref()))
+    }
+}
+
+impl<'a, T> From<Option<&'a T>> for NormalizedClass<'a>
+where
+    T: AsRef<str> + ?Sized,
+{
+    fn from(value: Option<&'a T>) -> Self {
+        Self(value.map(AsRef::as_ref))
+    }
+}
+
+impl<'a, T> From<&'a Option<T>> for NormalizedClass<'a>
+where
+    T: AsRef<str>,
+{
+    fn from(value: &'a Option<T>) -> Self {
+        Self(value.as_ref().map(AsRef::as_ref))
     }
 }
 
@@ -225,11 +246,17 @@ pub trait JoinClasses {
     fn join_classes(self) -> String;
 }
 
+impl JoinClasses for &[NormalizedClass<'_>] {
+    fn join_classes(self) -> String {
+        internal::join_normalized_class_slice(self)
+    }
+}
+
 macro_rules! impl_join_classes_for_tuples {
     (($($types:ident),*), ($($idx:tt),*)) => {
             impl<'a, $($types),*> JoinClasses for ($($types,)*)
             where
-                $($types: Into<internal::NormalizeOptionStr<'a>>),*
+                $($types: Into<NormalizedClass<'a>>),*
             {
                 fn join_classes(self) -> String {
                     let list = &[
@@ -328,7 +355,8 @@ impl_join_classes_for_tuples!(
 /// ```
 #[macro_export]
 macro_rules! classes {
+    () => { "" };
     ($($exp:expr),+) => {
-        ::stylance::JoinClasses::join_classes(($($exp),*))
+        ::stylance::JoinClasses::join_classes([$($exp.into()),*].as_slice())
     };
 }

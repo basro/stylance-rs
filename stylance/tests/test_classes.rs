@@ -1,6 +1,7 @@
 #[test]
 fn test_join_classes() {
     use stylance::JoinClasses;
+
     assert_eq!(
         (
             "one",
@@ -17,7 +18,21 @@ fn test_join_classes() {
 }
 
 #[test]
-fn test_classes_macro() {
+fn test_classes_macro_none() {
+    use stylance::classes;
+    assert_eq!(classes!(), "");
+}
+
+#[test]
+fn test_classes_macro_one() {
+    use stylance::classes;
+    assert_eq!(classes!("one"), "one");
+    assert_eq!(classes!(Some("one")), "one");
+    assert_eq!(classes!(false.then_some("one")), "");
+}
+
+#[test]
+fn test_classes_macro_many() {
     use stylance::classes;
     assert_eq!(
         classes!(
