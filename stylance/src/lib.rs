@@ -344,11 +344,7 @@ impl_join_classes_for_tuples!(
 #[macro_export]
 macro_rules! classes {
     () => { "" };
-    ($($exp:expr),+) => {
-        ::stylance::JoinClasses::join_classes([$($exp.into()),*].as_slice())
-    };
-    // Same, handling case with a trailing comma
-    ($($exp:expr),+,) => {
+    ($($exp:expr),+$(,)?) => {
         ::stylance::JoinClasses::join_classes([$($exp.into()),*].as_slice())
     };
 }
