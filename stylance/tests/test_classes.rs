@@ -47,3 +47,9 @@ fn test_classes_macro_many() {
         "one two four five six seven eight"
     );
 }
+
+#[test]
+fn test_classes_macro_trailing_comma() {
+    use stylance::classes;
+    assert_eq!(classes!("one", "two", "three",), "one two three");
+}
