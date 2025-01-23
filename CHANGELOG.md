@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.5.4
+
+-   Exposed stylance-cli run function as a library, allows for programattic usage of stylance.
+
 ## 0.5.3
 
 -   Added support for trailing commas in the `classes!` macro.
