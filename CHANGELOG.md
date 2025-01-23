@@ -2,7 +2,7 @@
 
 ## 0.5.4
 
--   Exposed stylance-cli run function as a library, allows for programattic usage of stylance.
+-   Exposed stylance-cli run function as a library, allows for programmatic usage of stylance.
 
 ## 0.5.3
 
