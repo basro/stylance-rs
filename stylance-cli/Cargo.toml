@@ -11,6 +11,7 @@ readme = "README.md"
 description = "Cli tool for bundling stylance scoped CSS files."
 
 [features]
+default = ["binary"]
 binary = ["clap", "notify", "tokio", "tokio-stream"]
 
 [dependencies]
