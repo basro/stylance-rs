@@ -10,18 +10,28 @@ categories.workspace = true
 readme = "README.md"
 description = "Cli tool for bundling stylance scoped CSS files."
 
+[features]
+binary = ["clap", "notify", "tokio", "tokio-stream"]
+
 [dependencies]
 walkdir = "2.4.0"
 stylance-core = { workspace = true }
-clap = { version = "4.4.12", features = ["derive", "cargo"] }
 anyhow = "1.0.79"
+
+clap = { version = "4.4.12", features = ["derive", "cargo"], optional = true }
 notify = { version = "6.1.1", default-features = false, features = [
 	"macos_kqueue",
-] }
-tokio = { version = "1.35.1", features = ["macros", "rt", "sync", "time"] }
-tokio-stream = "0.1.14"
+], optional = true }
+tokio = { version = "1.35.1", features = [
+	"macros",
+	"rt",
+	"sync",
+	"time",
+], optional = true }
+tokio-stream = { version = "0.1.14", optional = true }
 
 [[bin]]
 name = "stylance"
 path = "./src/main.rs"
 doc = false
+required-features = ["binary"]

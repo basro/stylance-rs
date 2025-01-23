@@ -1,20 +1,15 @@
-use anyhow::bail;
 use std::{
-    borrow::Cow,
-    collections::HashMap,
-    fs::{self, File},
-    io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
-use stylance_core::{load_config, Config, ModifyCssResult};
+use stylance_cli::run;
+use stylance_core::{load_config, Config};
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
 use tokio::{sync::mpsc, task::spawn_blocking};
 use tokio_stream::{Stream, StreamExt};
-use walkdir::WalkDir;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
@@ -41,24 +36,24 @@ struct Cli {
     watch: bool,
 }
 
+struct RunParams {
+    manifest_dir: PathBuf,
+    config: Config,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let run_params = make_run_params(&cli).await?;
 
-    run(&run_params)?;
+    run(&run_params.manifest_dir, &run_params.config)?;
 
     if cli.watch {
         watch(cli, run_params).await?;
     }
 
     Ok(())
-}
-
-struct RunParams {
-    manifest_dir: PathBuf,
-    config: Config,
 }
 
 async fn make_run_params(cli: &Cli) -> anyhow::Result<RunParams> {
@@ -85,152 +80,6 @@ async fn make_run_params(cli: &Cli) -> anyhow::Result<RunParams> {
         manifest_dir: cli.manifest_dir.clone(),
         config,
     })
-}
-
-fn run(run_params: &RunParams) -> anyhow::Result<()> {
-    println!("Running stylance");
-
-    let mut modified_css_files = Vec::new();
-
-    for folder in &run_params.config.folders {
-        for (entry, meta) in WalkDir::new(run_params.manifest_dir.join(folder))
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))
-        {
-            if meta.is_file() {
-                let path_str = entry.path().to_string_lossy();
-                if run_params
-                    .config
-                    .extensions
-                    .iter()
-                    .any(|ext| path_str.ends_with(ext))
-                {
-                    println!("{}", entry.path().display());
-                    modified_css_files.push(stylance_core::load_and_modify_css(
-                        &run_params.manifest_dir,
-                        entry.path(),
-                        &run_params.config,
-                    )?);
-                }
-            }
-        }
-    }
-
-    {
-        // Verify that there are no hash collisions
-        let mut map = HashMap::new();
-        for file in modified_css_files.iter() {
-            if let Some(previous_file) = map.insert(&file.hash, file) {
-                bail!(
-                    "The following files had a hash collision:\n{}\n{}\nConsider increasing the hash_len setting.",
-                    file.path.to_string_lossy(),
-                    previous_file.path.to_string_lossy()
-                );
-            }
-        }
-    }
-
-    {
-        // sort by (filename, path)
-        fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
-            (
-                a.path.file_name().expect("should be a file"),
-                &a.normalized_path_str,
-            )
-        }
-        modified_css_files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
-    }
-
-    if let Some(output_file) = &run_params.config.output_file {
-        if let Some(parent) = output_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        let mut file = BufWriter::new(File::create(output_file)?);
-
-        if let Some(scss_prelude) = &run_params.config.scss_prelude {
-            if output_file
-                .extension()
-                .filter(|ext| ext.to_string_lossy() == "scss")
-                .is_some()
-            {
-                file.write_all(scss_prelude.as_bytes())?;
-                file.write_all(b"\n\n")?;
-            }
-        }
-
-        file.write_all(
-            modified_css_files
-                .iter()
-                .map(|r| r.contents.as_ref())
-                .collect::<Vec<_>>()
-                .join("\n\n")
-                .as_bytes(),
-        )?;
-    }
-
-    if let Some(output_dir) = &run_params.config.output_dir {
-        let output_dir = output_dir.join("stylance");
-        fs::create_dir_all(&output_dir)?;
-
-        let entries = fs::read_dir(&output_dir)?;
-
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-
-            if file_type.is_file() {
-                fs::remove_file(entry.path())?;
-            }
-        }
-
-        let mut new_files = Vec::new();
-        for modified_css in modified_css_files {
-            let extension = modified_css
-                .path
-                .extension()
-                .map(|e| e.to_string_lossy())
-                .filter(|e| e == "css")
-                .unwrap_or(Cow::from("scss"));
-
-            let new_file_name = format!(
-                "{}-{}.{extension}",
-                modified_css
-                    .path
-                    .file_stem()
-                    .expect("This path should be a file")
-                    .to_string_lossy(),
-                modified_css.hash
-            );
-
-            new_files.push(new_file_name.clone());
-
-            let file_path = output_dir.join(new_file_name);
-            let mut file = BufWriter::new(File::create(file_path)?);
-
-            if let Some(scss_prelude) = &run_params.config.scss_prelude {
-                if extension == "scss" {
-                    file.write_all(scss_prelude.as_bytes())?;
-                    file.write_all(b"\n\n")?;
-                }
-            }
-
-            file.write_all(modified_css.contents.as_bytes())?;
-        }
-
-        let mut file = File::create(output_dir.join("_index.scss"))?;
-        file.write_all(
-            new_files
-                .iter()
-                .map(|f| format!("@use \"{f}\";\n"))
-                .collect::<Vec<_>>()
-                .join("")
-                .as_bytes(),
-        )?;
-    }
-
-    Ok(())
 }
 
 fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
@@ -323,7 +172,9 @@ async fn watch(cli: Cli, run_params: RunParams) -> anyhow::Result<()> {
             let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
             while (debounced_next(&mut stream).await).is_some() {
                 let run_params = run_params.borrow().clone();
-                if let Ok(Err(e)) = spawn_blocking(move || run(&run_params)).await {
+                if let Ok(Err(e)) =
+                    spawn_blocking(move || run(&run_params.manifest_dir, &run_params.config)).await
+                {
                     eprintln!("{e}");
                 }
             }
