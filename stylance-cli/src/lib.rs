@@ -6,13 +6,47 @@ use std::{
     path::Path,
 };
 
-use anyhow::bail;
 pub use stylance_core::Config;
 use stylance_core::ModifyCssResult;
 use walkdir::WalkDir;
 
-pub fn run(manifest_dir: &Path, config: &Config) -> anyhow::Result<()> {
-    println!("Running stylance");
+mod internal_prelude {
+    pub use crate::errors::*;
+    pub use color_eyre::eyre::bail;
+    pub use tracing::*;
+}
+use internal_prelude::*;
+
+pub mod errors {
+    pub use color_eyre::eyre::Report as Error;
+    pub use color_eyre::eyre::Result;
+}
+
+pub mod tracing {
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::EnvFilter;
+
+    use crate::internal_prelude::*;
+
+    pub fn install_tracing() -> Result<()> {
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_target(true)
+            .without_time();
+        let filter_layer = EnvFilter::try_from_default_env()
+            .or_else(|_| EnvFilter::try_new("info,stylance_cli=debug,stylance_core=debug"))?;
+
+        tracing_subscriber::registry()
+            .with(filter_layer)
+            .with(fmt_layer)
+            .init();
+
+        color_eyre::install()?;
+        Ok(())
+    }
+}
+
+pub fn run(manifest_dir: &Path, config: &Config) -> Result<()> {
+    info!("Running stylance");
 
     let mut modified_css_files = Vec::new();
 
@@ -25,7 +59,7 @@ pub fn run(manifest_dir: &Path, config: &Config) -> anyhow::Result<()> {
             if meta.is_file() {
                 let path_str = entry.path().to_string_lossy();
                 if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
-                    println!("{}", entry.path().display());
+                    info!("Processing: {}", entry.path().display());
                     modified_css_files.push(stylance_core::load_and_modify_css(
                         manifest_dir,
                         entry.path(),

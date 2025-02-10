@@ -9,11 +9,16 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, bail, Context};
 use class_name_pattern::ClassNamePattern;
 use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
+
+mod internal_prelude {
+    pub use color_eyre::eyre::{bail, eyre, WrapErr as _};
+    pub use color_eyre::Result;
+}
+use internal_prelude::*;
 
 fn default_extensions() -> Vec<String> {
     vec![".module.css".to_owned(), ".module.scss".to_owned()]
@@ -83,7 +88,7 @@ pub struct Class {
     pub hashed_name: String,
 }
 
-pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
+pub fn load_config(manifest_dir: &Path) -> color_eyre::Result<Config> {
     let cargo_toml_contents =
         fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
     let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
@@ -105,7 +110,7 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     Ok(config)
 }
 
-fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<String> {
+fn normalized_relative_path(base: &Path, subpath: &Path) -> Result<String> {
     let base = base.canonicalize()?;
     let subpath = subpath.canonicalize()?;
 
@@ -121,7 +126,7 @@ fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<Strin
     Ok(relative_path_str)
 }
 
-fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
+fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> Result<String> {
     let relative_path_str = normalized_relative_path(manifest_dir, css_file)?;
 
     let hash = hash_string(&relative_path_str);
@@ -141,11 +146,11 @@ pub fn load_and_modify_css(
     manifest_dir: &Path,
     css_file: &Path,
     config: &Config,
-) -> anyhow::Result<ModifyCssResult> {
+) -> Result<ModifyCssResult> {
     let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let fragments = parse::parse_css(&css_file_contents).map_err(|e| anyhow!("{e}"))?;
+    let fragments = parse::parse_css(&css_file_contents).map_err(|e| eyre!("{e}"))?;
 
     let mut new_file = String::with_capacity(css_file_contents.len() * 2);
     let mut cursor = css_file_contents.as_str();
@@ -179,13 +184,13 @@ pub fn get_classes(
     manifest_dir: &Path,
     css_file: &Path,
     config: &Config,
-) -> anyhow::Result<(String, Vec<Class>)> {
+) -> Result<(String, Vec<Class>)> {
     let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
 
     let css_file_contents = fs::read_to_string(css_file)?;
 
     let mut classes = parse::parse_css(&css_file_contents)
-        .map_err(|e| anyhow!("{e}"))?
+        .map_err(|e| eyre!("{e}"))?
         .into_iter()
         .filter_map(|c| {
             if let CssFragment::Class(c) = c {

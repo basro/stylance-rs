@@ -423,9 +423,9 @@ mod tests {
           border-color: lch(100% 10 10);
           border-style: dashed double;
           border-radius: 30px;
-        
+
         }
-        
+
         @media testing {
             .foo {
                 color: red;
@@ -455,7 +455,7 @@ mod tests {
             color: red;
           }
         }
-        
+
         @debug 1+2 * 3==1+(2 * 3); // true
         ";
 

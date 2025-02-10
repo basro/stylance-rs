@@ -17,7 +17,7 @@ binary = ["clap", "notify", "tokio", "tokio-stream"]
 [dependencies]
 walkdir = "2.4.0"
 stylance-core = { workspace = true }
-anyhow = "1.0.79"
+color-eyre = "0.6.3"
 
 clap = { version = "4.4.12", features = ["derive", "cargo"], optional = true }
 notify = { version = "6.1.1", default-features = false, features = [
@@ -30,6 +30,8 @@ tokio = { version = "1.35.1", features = [
 	"time",
 ], optional = true }
 tokio-stream = { version = "0.1.14", optional = true }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 
 [[bin]]
 name = "stylance"

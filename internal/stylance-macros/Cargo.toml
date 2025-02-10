@@ -14,7 +14,7 @@ nightly = []
 
 [dependencies]
 stylance-core = { workspace = true }
-anyhow = "1.0.79"
+color-eyre = "0.6.3"
 proc-macro2 = "1.0.71"
 quote = "1.0.33"
 syn = { version = "2.0.43", features = ["extra-traits"] }

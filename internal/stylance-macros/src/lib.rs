@@ -2,17 +2,22 @@
 
 use std::{env, path::Path};
 
-use anyhow::Context as _;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{quote, quote_spanned};
 use syn::{parse_macro_input, LitStr};
 
+mod internal_prelude {
+    #![allow(unused_imports)]
+    pub use color_eyre::eyre::{eyre, Result, WrapErr as _};
+}
+use internal_prelude::*;
+
 fn try_import_style_classes_with_path(
     manifest_path: &Path,
     file_path: &Path,
     identifier_span: Span,
-) -> anyhow::Result<TokenStream> {
+) -> Result<TokenStream> {
     let config = stylance_core::load_config(manifest_path)?;
     let (_, classes) = stylance_core::get_classes(manifest_path, file_path, &config)?;
 
@@ -39,9 +44,9 @@ fn try_import_style_classes_with_path(
     .into())
 }
 
-fn try_import_style_classes(input: &LitStr) -> anyhow::Result<TokenStream> {
+fn try_import_style_classes(input: &LitStr) -> Result<TokenStream> {
     let manifest_dir_env =
-        env::var_os("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR env var not found")?;
+        env::var_os("CARGO_MANIFEST_DIR").ok_or(eyre!("CARGO_MANIFEST_DIR env var not found"))?;
     let manifest_path = Path::new(&manifest_dir_env);
     let file_path = manifest_path.join(Path::new(&input.value()));
 
@@ -63,7 +68,7 @@ pub fn import_style_classes(input: TokenStream) -> TokenStream {
 #[cfg(feature = "nightly")]
 fn try_import_style_classes_rel(input: &LitStr) -> anyhow::Result<TokenStream> {
     let manifest_dir_env =
-        env::var_os("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR env var not found")?;
+        env::var_os("CARGO_MANIFEST_DIR").ok_or(eyre!("CARGO_MANIFEST_DIR env var not found"))?;
     let manifest_path = Path::new(&manifest_dir_env);
 
     let source_path = proc_macro::Span::call_site().source().source_file().path();

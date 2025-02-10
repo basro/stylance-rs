@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use stylance_cli::errors::*;
 use stylance_cli::run;
 use stylance_core::{load_config, Config};
 
@@ -10,6 +11,7 @@ use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
 use tokio::{sync::mpsc, task::spawn_blocking};
 use tokio_stream::{Stream, StreamExt};
+use tracing::*;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
@@ -42,8 +44,10 @@ struct RunParams {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    stylance_cli::tracing::install_tracing()?;
 
     let run_params = make_run_params(&cli).await?;
 
@@ -56,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn make_run_params(cli: &Cli) -> anyhow::Result<RunParams> {
+async fn make_run_params(cli: &Cli) -> Result<RunParams> {
     let manifest_dir = cli.manifest_dir.clone();
     let mut config = spawn_blocking(move || load_config(&manifest_dir)).await??;
 
@@ -82,7 +86,7 @@ async fn make_run_params(cli: &Cli) -> anyhow::Result<RunParams> {
     })
 }
 
-fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
+fn watch_file(path: &Path) -> Result<mpsc::UnboundedReceiver<()>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
@@ -101,7 +105,7 @@ fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
     Ok(events_rx)
 }
 
-fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver<PathBuf>> {
+fn watch_folders(paths: &Vec<PathBuf>) -> Result<mpsc::UnboundedReceiver<PathBuf>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
@@ -141,7 +145,7 @@ async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> 
     }
 }
 
-async fn watch(cli: Cli, run_params: RunParams) -> anyhow::Result<()> {
+async fn watch(cli: Cli, run_params: RunParams) -> Result<()> {
     let (run_params_tx, mut run_params) = tokio::sync::watch::channel(Arc::new(run_params));
 
     let manifest_dir = cli.manifest_dir.clone();
@@ -158,7 +162,7 @@ async fn watch(cli: Cli, run_params: RunParams) -> anyhow::Result<()> {
                     };
                 }
                 Err(e) => {
-                    eprintln!("{e}");
+                    error!("{e}");
                 }
             }
         }
@@ -175,7 +179,7 @@ async fn watch(cli: Cli, run_params: RunParams) -> anyhow::Result<()> {
                 if let Ok(Err(e)) =
                     spawn_blocking(move || run(&run_params.manifest_dir, &run_params.config)).await
                 {
-                    eprintln!("{e}");
+                    error!("{e}");
                 }
             }
         }
