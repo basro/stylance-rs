@@ -30,7 +30,8 @@ pub mod tracing {
 
     pub fn install_tracing() -> Result<()> {
         let fmt_layer = tracing_subscriber::fmt::layer()
-            .with_target(true)
+            .with_target(false)
+            .with_level(false)
             .without_time();
         let filter_layer = EnvFilter::try_from_default_env()
             .or_else(|_| EnvFilter::try_new("info,stylance_cli=debug,stylance_core=debug"))?;
