@@ -13,7 +13,16 @@ use walkdir::WalkDir;
 
 pub fn run(manifest_dir: &Path, config: &Config) -> anyhow::Result<()> {
     println!("Running stylance");
+    run_silent(manifest_dir, config, |file_path| {
+        println!("{}", file_path.display())
+    })
+}
 
+pub fn run_silent(
+    manifest_dir: &Path,
+    config: &Config,
+    mut file_visit_callback: impl FnMut(&Path),
+) -> anyhow::Result<()> {
     let mut modified_css_files = Vec::new();
 
     for folder in &config.folders {
@@ -25,7 +34,7 @@ pub fn run(manifest_dir: &Path, config: &Config) -> anyhow::Result<()> {
             if meta.is_file() {
                 let path_str = entry.path().to_string_lossy();
                 if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
-                    println!("{}", entry.path().display());
+                    file_visit_callback(entry.path());
                     modified_css_files.push(stylance_core::load_and_modify_css(
                         manifest_dir,
                         entry.path(),
