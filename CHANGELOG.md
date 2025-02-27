@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.5.5
+
+-   Added `run_silent` to stylance-cli lib which is the same as the `run` function but it calls a callback instead of printing filenames to stdout.
+
 ## 0.5.4
 
 -   Exposed stylance-cli run function as a library, allows for programmatic usage of stylance.
