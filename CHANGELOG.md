@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.6.0
+
+-   Fix nightly features breakage. [#17](https://github.com/basro/stylance-rs/pull/17).
+
 ## 0.5.5
 
 -   Added `run_silent` to stylance-cli lib which is the same as the `run` function but it calls a callback instead of printing filenames to stdout.
