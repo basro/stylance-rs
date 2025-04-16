@@ -66,11 +66,13 @@ fn try_import_style_classes_rel(input: &LitStr) -> anyhow::Result<TokenStream> {
         env::var_os("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR env var not found")?;
     let manifest_path = Path::new(&manifest_dir_env);
 
-    let source_path = proc_macro::Span::call_site().source().source_file().path();
+    let source_path = proc_macro::Span::call_site().source().local_file();
     // rust-analyzer gives a source file with `.is_real() == true`
     // but the path itself is just "".
     // assume that an empty path means that rust-analyzer is running this
     // and expand to nothing.
+    let source_path = source_path
+        .ok_or_else(|| anyhow::anyhow!("Could not determine source file parent directory"))?;
     let Some(parent) = source_path.parent() else {
         return Ok(TokenStream::new());
     };
