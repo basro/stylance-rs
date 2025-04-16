@@ -66,17 +66,17 @@ fn try_import_style_classes_rel(input: &LitStr) -> anyhow::Result<TokenStream> {
         env::var_os("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR env var not found")?;
     let manifest_path = Path::new(&manifest_dir_env);
 
-    let source_path = proc_macro::Span::call_site().source().local_file();
-    // rust-analyzer gives a source file with `.is_real() == true`
-    // but the path itself is just "".
-    // assume that an empty path means that rust-analyzer is running this
-    // and expand to nothing.
-    let source_path = source_path
-        .ok_or_else(|| anyhow::anyhow!("Could not determine source file parent directory"))?;
-    let Some(parent) = source_path.parent() else {
+    let Some(source_path) = proc_macro::Span::call_site().source().local_file() else {
+        // It would make sense to error here but currently rust analyzer is returning None when
+        // the normal build would return the path.
+        // For this reason we bail silently creating no code.
         return Ok(TokenStream::new());
     };
-    let css_path = parent.join(input.value());
+
+    let css_path = source_path
+        .parent()
+        .expect("Macro source path should have a parent dir")
+        .join(input.value());
 
     try_import_style_classes_with_path(manifest_path, &css_path, input.span())
 }
