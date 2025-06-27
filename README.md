@@ -43,27 +43,18 @@ Then use the import_crate_style proc macro to read a css/scss file and bring the
 // path is relative to the crate's Manifest directory (the directory that holds the Cargo.toml file)
 stylance::import_crate_style!(my_style, "src/component/card/card.module.scss");
 
+// path is relative to the parent directory of the file where this macro was called from
+stylance::import_style!(my_style2, "card.module.scss");
+
 fn use_style() {
 	// Use the classnames:
-	println!("{}", my_style::header) // prints header-f45126d
+	println!("{} {}", my_style::header, my_style2::content) // prints header-f45126d content-f45126d
 }
 ```
 
 All class names found inside the file `src/component/card/card.module.scss` will be included as constants inside a module named as the identifier passed as first argument to import_style.
 
 The proc macro has no side effects, to generate the transformed css file we then use the stylance cli.
-
-### Relative path imports (Requires rust 1.88)
-
-You can import styles from a file path relative to the file where the macro was used:
-
-In the file `src/component/card/card.rs`:
-
-```rust
-stylance::import_style!(my_style, "card.module.scss");
-```
-
-This will import the file `src/component/card/card.module.scss`
 
 ### Accessing global classnames
 

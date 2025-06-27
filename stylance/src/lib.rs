@@ -4,10 +4,6 @@
 //!
 //! Use it in conjunction with [stylance-cli](https://crates.io/crates/stylance-cli).
 //!
-//! # Feature flags
-//!
-//! - `nightly`: Enables importing styles with paths relative to the rust file where the macro was called.
-//!
 //! # Usage
 //!
 //! Create a .module.css file inside your rust source directory
@@ -26,9 +22,10 @@
 //! Then import that file from your rust code:
 //! ```rust
 //! stylance::import_crate_style!(style, "src/component1/style.module.css");
+//! stylance::import_style!(style2, "style2.module.css");
 //!
 //! fn use_style() {
-//!     println!("{}", style::header);
+//!     println!("{} {}", style::header, style2::content);
 //! }
 //! ```
 //!
@@ -158,7 +155,6 @@ pub mod internal {
 ///     pub const contents: &str = "contents-539306b";
 /// }
 /// ```
-//#[cfg_attr(docsrs, doc(cfg(feature = "nightly")))]
 #[macro_export]
 macro_rules! import_style {
     ($(#[$meta:meta])* $vis:vis $ident:ident, $str:expr) => {
