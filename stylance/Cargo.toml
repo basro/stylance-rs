@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 description = "Scoped CSS for rust projects"
 documentation = "https://docs.rs/stylance"
+rust-version = "1.88"
 
 [lib]
 doctest = false
