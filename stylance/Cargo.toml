@@ -14,9 +14,6 @@ documentation = "https://docs.rs/stylance"
 [lib]
 doctest = false
 
-[features]
-nightly = ["stylance-macros/nightly"]
-
 [dependencies]
 stylance-macros = { workspace = true }
 

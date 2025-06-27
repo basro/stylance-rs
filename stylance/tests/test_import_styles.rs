@@ -28,7 +28,6 @@ fn test_import_crate_style() {
     assert_eq!(style2::different_style, "different-style-58ea9e3");
 }
 
-#[cfg(feature = "nightly")]
 #[test]
 fn test_import_style() {
     import_style!(style, "style.module.scss");

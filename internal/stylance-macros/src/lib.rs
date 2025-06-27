@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "nightly", feature(proc_macro_span))]
-
 use std::{env, path::Path};
 
 use anyhow::Context as _;
@@ -60,13 +58,12 @@ pub fn import_style_classes(input: TokenStream) -> TokenStream {
     }
 }
 
-#[cfg(feature = "nightly")]
 fn try_import_style_classes_rel(input: &LitStr) -> anyhow::Result<TokenStream> {
     let manifest_dir_env =
         env::var_os("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR env var not found")?;
     let manifest_path = Path::new(&manifest_dir_env);
 
-    let Some(source_path) = proc_macro::Span::call_site().source().local_file() else {
+    let Some(source_path) = input.span().unwrap().local_file() else {
         // It would make sense to error here but currently rust analyzer is returning None when
         // the normal build would return the path.
         // For this reason we bail silently creating no code.
@@ -81,7 +78,6 @@ fn try_import_style_classes_rel(input: &LitStr) -> anyhow::Result<TokenStream> {
     try_import_style_classes_with_path(manifest_path, &css_path, input.span())
 }
 
-#[cfg(feature = "nightly")]
 #[proc_macro]
 pub fn import_style_classes_rel(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitStr);

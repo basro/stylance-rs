@@ -158,7 +158,7 @@ pub mod internal {
 ///     pub const contents: &str = "contents-539306b";
 /// }
 /// ```
-#[cfg_attr(docsrs, doc(cfg(feature = "nightly")))]
+//#[cfg_attr(docsrs, doc(cfg(feature = "nightly")))]
 #[macro_export]
 macro_rules! import_style {
     ($(#[$meta:meta])* $vis:vis $ident:ident, $str:expr) => {

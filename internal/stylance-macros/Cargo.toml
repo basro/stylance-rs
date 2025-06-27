@@ -9,9 +9,6 @@ description = "Internal crate used by stylance"
 [lib]
 proc-macro = true
 
-[features]
-nightly = []
-
 [dependencies]
 stylance-core = { workspace = true }
 anyhow = "1.0.79"

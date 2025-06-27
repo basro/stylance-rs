@@ -32,7 +32,6 @@ fn main() {
     // With the nightly feature you get access to import_style! which uses
     // paths relative to the rust file were it is called.
     // Requires rust nightly toolchain
-    #[cfg(feature = "nightly")]
     {
         stylance::import_style!(
             #[allow(dead_code)]
