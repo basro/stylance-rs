@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.7.0
+- Remove nightly feature. Rust 1.88 stabilized the features that were requried for relative paths in  `import_style!`.
+- Stylance now requires rust 1.88
+
 ## 0.6.0
 
 -   Fix nightly features breakage. [#17](https://github.com/basro/stylance-rs/pull/17).
