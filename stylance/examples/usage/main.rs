@@ -29,18 +29,16 @@ fn main() {
         ),
     );
 
-    // With the nightly feature you get access to import_style! which uses
-    // paths relative to the rust file were it is called.
+    // With import_style! you can use paths
+    // relative to the rust file were it is called.
     // Requires rust nightly toolchain
-    {
-        stylance::import_style!(
-            #[allow(dead_code)]
-            rel_path_style,
-            "style1.module.scss"
-        );
-        println!(
-            "rel_path_style 'style1.module.scss' \nheader: {}",
-            rel_path_style::header
-        );
-    }
+    stylance::import_style!(
+        #[allow(dead_code)]
+        rel_path_style,
+        "style1.module.scss"
+    );
+    println!(
+        "rel_path_style 'style1.module.scss' \nheader: {}",
+        rel_path_style::header
+    );
 }

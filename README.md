@@ -40,6 +40,7 @@ Then use the import_crate_style proc macro to read a css/scss file and bring the
 
 ```rust
 // Import a css file's classes:
+// path is relative to the crate's Manifest directory (the directory that holds the Cargo.toml file)
 stylance::import_crate_style!(my_style, "src/component/card/card.module.scss");
 
 fn use_style() {
@@ -51,6 +52,18 @@ fn use_style() {
 All class names found inside the file `src/component/card/card.module.scss` will be included as constants inside a module named as the identifier passed as first argument to import_style.
 
 The proc macro has no side effects, to generate the transformed css file we then use the stylance cli.
+
+### Relative path imports (Requires rust 1.88)
+
+You can import styles from a file path relative to the file where the macro was used:
+
+In the file `src/component/card/card.rs`:
+
+```rust
+stylance::import_style!(my_style, "card.module.scss");
+```
+
+This will import the file `src/component/card/card.module.scss`
 
 ### Accessing global classnames
 
@@ -87,24 +100,6 @@ Any attribute is allowed, if you want to deny instead you can do it too:
 
 ```rust
 import_crate_style!(#[deny(dead_code)] my_style, "src/component/card/card.module.scss");
-```
-
-### Nightly feature
-
-If you are using rust nightly you can enable the `nightly` feature to get access to the `import_style!` macro which lets you specify the css module file as relative to the current file.
-
-Enable the nightly feature:
-
-```toml
-stylance = { version = "<version here>", features = ["nightly"] }
-```
-
-Then import style as relative:
-
-`src/component/card/card.rs`:
-
-```rust
-stylance::import_style!(my_style, "card.module.scss");
 ```
 
 ## Stylance cli
@@ -218,9 +213,9 @@ class_name_pattern = "my-project-[name]-[hash]"
 
 ## Rust analyzer completion issues
 
-### Nightly `import_style!`
+### `import_style!`
 
-Rust analyzer will not produce any completion for import_style!, this is because it doesn't support the nightly features used to obtain the current rust file path.
+Rust analyzer currently does produce any completion for styles imported with `import_style!`
 
 ### Stable `import_crate_style!`
 
@@ -230,7 +225,7 @@ Unfortunately RA will cache the result and will not realize that it needs to ree
 
 This only affects completion, errors from cargo check will properly update.
 
-The only way to force RA to reevaluate the macros is to restart the server or to rebuild all proc macros. Sadly this takes a really long time.
+The only way to force RA to reevaluate the macros is to restart the server or to rebuild all proc macros. This can be pretty slow.
 
 It is my opinion that no completion would be better than outdated completion.
 
@@ -244,4 +239,4 @@ Supposedly one should be able to disable the expansion of the macro by adding th
 
 Unfortunately this doesn't seem to work at the moment, this rust analyzer feature might fix the issue: https://github.com/rust-lang/rust-analyzer/pull/15923
 
-In the meantime the nightly `import_style` is my recommended way to work with this crate.
+
