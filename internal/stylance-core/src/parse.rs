@@ -23,7 +23,7 @@ pub enum CssFragment<'s> {
     Global(Global<'s>),
 }
 
-pub fn parse_css(input: &str) -> Result<Vec<CssFragment>, ParseError<&str, ContextError>> {
+pub fn parse_css(input: &str) -> Result<Vec<CssFragment<'_>>, ParseError<&str, ContextError>> {
     style_rule_block_contents.parse(input)
 }
 
