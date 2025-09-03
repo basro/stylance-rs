@@ -23,7 +23,7 @@ pub enum CssFragment<'s> {
     Global(Global<'s>),
 }
 
-pub fn parse_css(input: &str) -> Result<Vec<CssFragment>, ParseError<&str, ContextError>> {
+pub fn parse_css(input: &str) -> Result<Vec<CssFragment<'_>>, ParseError<&str, ContextError>> {
     style_rule_block_contents.parse(input)
 }
 
@@ -217,7 +217,7 @@ fn at_rule<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     }
 
     match identifier {
-        "media" | "layer" | "container" => {
+        "media" | "layer" | "container" | "include" => {
             cut_err(terminated(style_rule_block_contents, '}')).parse_next(input)
         }
         _ => {
@@ -427,14 +427,22 @@ mod tests {
         }
         
         @media testing {
-            .foo {
+            .media-foo {
                 color: red;
             }
         }
 
         @layer {
-            .foo {
+            .layer-foo {
                 color: blue;
+            }
+        }
+
+        @include mixin {
+            border: none;
+
+            .include-foo {
+                color: green;
             }
         }
 
@@ -464,8 +472,9 @@ mod tests {
             r,
             Ok(vec![
                 CssFragment::Class("default_border"),
-                CssFragment::Class("foo"),
-                CssFragment::Class("foo"),
+                CssFragment::Class("media-foo"),
+                CssFragment::Class("layer-foo"),
+                CssFragment::Class("include-foo"),
                 CssFragment::Class("container"),
                 CssFragment::Class("bar"),
             ])
