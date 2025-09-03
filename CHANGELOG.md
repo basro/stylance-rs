@@ -1,8 +1,13 @@
 # Stylance changelog
 
+## 0.7.1
+
+-   Added support for hashing class names in the content block argument of SCSS `@include` at-rule [#19](https://github.com/basro/stylance-rs/pull/19)
+
 ## 0.7.0
-- Remove nightly feature. Rust 1.88 stabilized the features that were required for relative paths in  `import_style!`.
-- Stylance now requires rust 1.88
+
+-   Remove nightly feature. Rust 1.88 stabilized the features that were required for relative paths in `import_style!`.
+-   Stylance now requires rust 1.88
 
 ## 0.6.0
 
