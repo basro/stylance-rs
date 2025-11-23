@@ -74,7 +74,7 @@ All configuration settings are optional.
 
 # output_file
 # When set, stylance-cli will bundle all css module files
-# into by concatenating them and put the result in this file.
+# by concatenating them and put the result in this file.
 output_file = "./styles/bundle.scss"
 
 # output_dir
