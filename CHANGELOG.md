@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.7.2
+
+-   Fix for stylance-cli watch mode kqueue crashing in MacOS. (Issue [#23](https://github.com/basro/stylance-rs/issues/23)) (PR [#24](https://github.com/basro/stylance-rs/pull/24))
+
 ## 0.7.1
 
 -   Added support for hashing class names in the content block argument of SCSS `@include` at-rule [#19](https://github.com/basro/stylance-rs/pull/19)
