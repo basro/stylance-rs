@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.7.4
+
+-   Fixes stylance-cli watch mode Cargo.toml infinite loop on linux (v0.7.3 failed to address the problem for the Cargo.toml file watching). #25
+
 ## 0.7.3
 
 -   Fix bug introduced on v0.7.2 where stylance-cli watch mode would enter an infinite loop on linux systems. #25
