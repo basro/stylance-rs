@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.7.3
+
+-   Fix bug introduced on v0.7.2 where stylance-cli watch mode would enter an infinite loop on linux systems. #25
+
 ## 0.7.2
 
 -   Fix for stylance-cli watch mode kqueue crashing in MacOS. (Issue [#23](https://github.com/basro/stylance-rs/issues/23)) (PR [#24](https://github.com/basro/stylance-rs/pull/24))
