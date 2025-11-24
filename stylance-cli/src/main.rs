@@ -106,11 +106,18 @@ fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
         move |e: notify::Result<Event>| {
-            if let Ok(e) = e {
-                for path in e.paths {
-                    if events_tx.send(path).is_err() {
-                        break;
-                    }
+            let Ok(e) = e else {
+                return;
+            };
+
+            // Ignore access events
+            if matches!(e.kind, notify::EventKind::Access(_)) {
+                return;
+            }
+
+            for path in e.paths {
+                if events_tx.send(path).is_err() {
+                    break;
                 }
             }
         }
