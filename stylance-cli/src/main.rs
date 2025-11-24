@@ -86,7 +86,16 @@ fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
-        move |_| {
+        move |e: notify::Result<Event>| {
+            let Ok(e) = e else {
+                return;
+            };
+
+            // Ignore access events
+            if matches!(e.kind, notify::EventKind::Access(_)) {
+                return;
+            }
+
             let _ = events_tx.send(());
         }
     })?;
