@@ -9,6 +9,7 @@ pub enum Fragment {
     Hash,
 }
 
+/// Pattern to create new class names
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassNamePattern(Vec<Fragment>);
 
