@@ -170,6 +170,26 @@ pub struct TransformCssResult<'a> {
     pub class_names: HashMap<&'a str, Cow<'a, str>>,
 }
 
+/// Parses and optionally rewrites CSS class selectors.
+///
+/// Class selectors are transformed using `class_name_pattern.apply(class, hash)`.
+/// `:global(...)` selectors are preserved.
+///
+/// # Parameters
+/// * `css` — Source CSS.
+/// * `class_name_pattern` — Pattern used to rewrite class names.
+/// * `hash` — Hash/namespace passed to the pattern.
+/// * `create_new` — If `true`, return a rewritten CSS string; if `false`,
+///   no new CSS is built.
+/// * `collect_classes` — If `true`, collect a map of original spans to
+///   rewritten class names.
+///
+/// # Returns
+/// A [`TransformCssResult`] containing the rewritten CSS (if requested)
+/// and/or the collected class-name mappings.
+///
+/// # Errors
+/// Returns a [`ParseError`] if the CSS cannot be parsed.
 pub fn transform_css<'a>(
     css: &'a str,
     class_name_pattern: &ClassNamePattern,
