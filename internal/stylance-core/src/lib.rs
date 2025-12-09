@@ -5,7 +5,6 @@ pub use class_name_pattern::{ClassNamePattern, Fragment};
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fs,
     hash::{Hash as _, Hasher as _},
     path::{Path, PathBuf},
@@ -167,7 +166,7 @@ pub fn load_and_modify_css(
 
 pub struct TransformCssResult<'a> {
     pub css: String,
-    pub class_names: HashMap<&'a str, Cow<'a, str>>,
+    pub class_names: Vec<(&'a str, Cow<'a, str>)>,
 }
 
 /// Parses and optionally rewrites CSS class selectors.
@@ -179,10 +178,10 @@ pub struct TransformCssResult<'a> {
 /// * `css` — Source CSS.
 /// * `class_name_pattern` — Pattern used to rewrite class names.
 /// * `hash` — Hash/namespace passed to the pattern.
-/// * `create_new` — If `true`, return a rewritten CSS string; if `false`,
-///   no new CSS is built.
-/// * `collect_classes` — If `true`, collect a map of original spans to
-///   rewritten class names.
+/// * `rewrite_css` — If `true`, return a rewritten CSS string; if `false`,
+///   the returned css string is empty.
+/// * `collect_class_names` — If `true`, collect a map of original spans to
+///   rewritten class names; if `false`, the returned vec is empty.
 ///
 /// # Returns
 /// A [`TransformCssResult`] containing the rewritten CSS (if requested)
@@ -194,13 +193,13 @@ pub fn transform_css<'a>(
     css: &'a str,
     class_name_pattern: &ClassNamePattern,
     hash: &str,
-    collect_new: bool,
-    collect_classes: bool,
+    rewrite_css: bool,
+    collect_class_names: bool,
 ) -> Result<TransformCssResult<'a>, ParseError<&'a str, ContextError>> {
     let fragments = parse::parse_css(&css)?;
 
-    let mut class_names = HashMap::new();
-    let mut new_css = String::with_capacity(if collect_new { css.len() * 2 } else { 0 });
+    let mut class_names = Vec::new();
+    let mut new_css = String::with_capacity(if rewrite_css { css.len() * 2 } else { 0 });
     let mut cursor = css;
 
     for fragment in fragments {
@@ -211,16 +210,16 @@ pub fn transform_css<'a>(
 
         let (before, after) = cursor.split_at(span.as_ptr() as usize - cursor.as_ptr() as usize);
         cursor = &after[span.len()..];
-        if collect_new {
+        if rewrite_css {
             new_css.push_str(before);
             new_css.push_str(&replace);
         }
-        if collect_classes {
-            class_names.insert(span, replace);
+        if collect_class_names {
+            class_names.push((span, replace));
         }
     }
 
-    if collect_new {
+    if rewrite_css {
         new_css.push_str(cursor);
     }
     Ok(TransformCssResult {
