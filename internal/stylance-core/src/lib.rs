@@ -5,6 +5,7 @@ pub use class_name_pattern::{ClassNamePattern, Fragment};
 
 use std::{
     borrow::Cow,
+    collections::HashSet,
     fs,
     hash::{Hash as _, Hasher as _},
     path::{Path, PathBuf},
@@ -147,7 +148,9 @@ pub fn load_and_modify_css(
     let hash = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let contents = create_new_css(&css_file_contents, &config.class_name_pattern, &hash).map_err(|e| anyhow!("{e}"))?;
+    let (contents, _) =
+        create_new_css(&css_file_contents, &config.class_name_pattern, &hash)
+            .map_err(|e| anyhow!("{e}"))?;
 
     Ok(ModifyCssResult {
         path: css_file.to_owned(),
@@ -157,18 +160,20 @@ pub fn load_and_modify_css(
     })
 }
 
-pub fn create_new_css<'a>(css: &'a str, class_name_pattern: &ClassNamePattern, hash: &str) -> Result<String, ParseError<&'a str, ContextError>> {
+pub fn create_new_css<'a>(
+    css: &'a str,
+    class_name_pattern: &ClassNamePattern,
+    hash: &str,
+) -> Result<(String, HashSet<Cow<'a, str>>), ParseError<&'a str, ContextError>> {
     let fragments = parse::parse_css(&css)?;
 
+    let mut new_class_names = HashSet::new();
     let mut new_css = String::with_capacity(css.len() * 2);
     let mut cursor = css;
 
     for fragment in fragments {
         let (span, replace) = match fragment {
-            CssFragment::Class(class) => (
-                class,
-                Cow::Owned(class_name_pattern.apply(class, hash)),
-            ),
+            CssFragment::Class(class) => (class, Cow::Owned(class_name_pattern.apply(class, hash))),
             CssFragment::Global(Global { inner, outer }) => (outer, Cow::Borrowed(inner)),
         };
 
@@ -176,10 +181,11 @@ pub fn create_new_css<'a>(css: &'a str, class_name_pattern: &ClassNamePattern, h
         cursor = &after[span.len()..];
         new_css.push_str(before);
         new_css.push_str(&replace);
+        new_class_names.insert(replace);
     }
 
     new_css.push_str(cursor);
-    Ok(new_css)
+    Ok((new_css, new_class_names))
 }
 
 pub fn get_classes(
