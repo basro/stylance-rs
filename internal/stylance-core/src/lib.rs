@@ -14,6 +14,7 @@ use class_name_pattern::ClassNamePattern;
 use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
+use winnow::error::{ContextError, ParseError};
 
 fn default_extensions() -> Vec<String> {
     vec![".module.css".to_owned(), ".module.scss".to_owned()]
@@ -142,37 +143,42 @@ pub fn load_and_modify_css(
     css_file: &Path,
     config: &Config,
 ) -> anyhow::Result<ModifyCssResult> {
-    let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
+    let hash = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let fragments = parse::parse_css(&css_file_contents).map_err(|e| anyhow!("{e}"))?;
+    let contents = create_new_css(&css_file_contents, &config.class_name_pattern, &hash).map_err(|e| anyhow!("{e}"))?;
 
-    let mut new_file = String::with_capacity(css_file_contents.len() * 2);
-    let mut cursor = css_file_contents.as_str();
+    Ok(ModifyCssResult {
+        path: css_file.to_owned(),
+        normalized_path_str: normalized_relative_path(manifest_dir, css_file)?,
+        hash,
+        contents,
+    })
+}
+
+pub fn create_new_css<'a>(css: &'a str, class_name_pattern: &ClassNamePattern, hash: &str) -> Result<String, ParseError<&'a str, ContextError>> {
+    let fragments = parse::parse_css(&css)?;
+
+    let mut new_css = String::with_capacity(css.len() * 2);
+    let mut cursor = css;
 
     for fragment in fragments {
         let (span, replace) = match fragment {
             CssFragment::Class(class) => (
                 class,
-                Cow::Owned(config.class_name_pattern.apply(class, &hash_str)),
+                Cow::Owned(class_name_pattern.apply(class, hash)),
             ),
             CssFragment::Global(Global { inner, outer }) => (outer, Cow::Borrowed(inner)),
         };
 
         let (before, after) = cursor.split_at(span.as_ptr() as usize - cursor.as_ptr() as usize);
         cursor = &after[span.len()..];
-        new_file.push_str(before);
-        new_file.push_str(&replace);
+        new_css.push_str(before);
+        new_css.push_str(&replace);
     }
 
-    new_file.push_str(cursor);
-
-    Ok(ModifyCssResult {
-        path: css_file.to_owned(),
-        normalized_path_str: normalized_relative_path(manifest_dir, css_file)?,
-        hash: hash_str,
-        contents: new_file,
-    })
+    new_css.push_str(cursor);
+    Ok(new_css)
 }
 
 pub fn get_classes(
