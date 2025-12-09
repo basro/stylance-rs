@@ -148,26 +148,39 @@ pub fn load_and_modify_css(
     let hash = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let (contents, _) = transform_css(&css_file_contents, &config.class_name_pattern, &hash)
-        .map_err(|e| anyhow!("{e}"))?;
+    let transform = transform_css(
+        &css_file_contents,
+        &config.class_name_pattern,
+        &hash,
+        true,
+        false,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
 
     Ok(ModifyCssResult {
         path: css_file.to_owned(),
         normalized_path_str: normalized_relative_path(manifest_dir, css_file)?,
         hash,
-        contents,
+        contents: transform.css,
     })
+}
+
+pub struct TransformCssResult<'a> {
+    pub css: String,
+    pub class_names: HashMap<&'a str, Cow<'a, str>>,
 }
 
 pub fn transform_css<'a>(
     css: &'a str,
     class_name_pattern: &ClassNamePattern,
     hash: &str,
-) -> Result<(String, HashMap<&'a str, Cow<'a, str>>), ParseError<&'a str, ContextError>> {
+    collect_new: bool,
+    collect_classes: bool,
+) -> Result<TransformCssResult<'a>, ParseError<&'a str, ContextError>> {
     let fragments = parse::parse_css(&css)?;
 
     let mut class_names = HashMap::new();
-    let mut new_css = String::with_capacity(css.len() * 2);
+    let mut new_css = String::with_capacity(if collect_new { css.len() * 2 } else { 0 });
     let mut cursor = css;
 
     for fragment in fragments {
@@ -178,13 +191,22 @@ pub fn transform_css<'a>(
 
         let (before, after) = cursor.split_at(span.as_ptr() as usize - cursor.as_ptr() as usize);
         cursor = &after[span.len()..];
-        new_css.push_str(before);
-        new_css.push_str(&replace);
-        class_names.insert(span, replace);
+        if collect_new {
+            new_css.push_str(before);
+            new_css.push_str(&replace);
+        }
+        if collect_classes {
+            class_names.insert(span, replace);
+        }
     }
 
-    new_css.push_str(cursor);
-    Ok((new_css, class_names))
+    if collect_new {
+        new_css.push_str(cursor);
+    }
+    Ok(TransformCssResult {
+        css: new_css,
+        class_names,
+    })
 }
 
 pub fn get_classes(
