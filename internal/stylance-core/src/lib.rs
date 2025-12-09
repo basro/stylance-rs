@@ -148,7 +148,7 @@ pub fn load_and_modify_css(
     let hash = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let (contents, _) = create_new_css(&css_file_contents, &config.class_name_pattern, &hash)
+    let (contents, _) = transform_css(&css_file_contents, &config.class_name_pattern, &hash)
         .map_err(|e| anyhow!("{e}"))?;
 
     Ok(ModifyCssResult {
@@ -159,7 +159,7 @@ pub fn load_and_modify_css(
     })
 }
 
-pub fn create_new_css<'a>(
+pub fn transform_css<'a>(
     css: &'a str,
     class_name_pattern: &ClassNamePattern,
     hash: &str,
