@@ -166,7 +166,7 @@ pub fn create_new_css<'a>(
 ) -> Result<(String, HashMap<&'a str, Cow<'a, str>>), ParseError<&'a str, ContextError>> {
     let fragments = parse::parse_css(&css)?;
 
-    let mut new_class_names = HashMap::new();
+    let mut class_names = HashMap::new();
     let mut new_css = String::with_capacity(css.len() * 2);
     let mut cursor = css;
 
@@ -180,11 +180,11 @@ pub fn create_new_css<'a>(
         cursor = &after[span.len()..];
         new_css.push_str(before);
         new_css.push_str(&replace);
-        new_class_names.insert(span, replace);
+        class_names.insert(span, replace);
     }
 
     new_css.push_str(cursor);
-    Ok((new_css, new_class_names))
+    Ok((new_css, class_names))
 }
 
 pub fn get_classes(
