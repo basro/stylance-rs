@@ -1,6 +1,8 @@
 mod class_name_pattern;
 mod parse;
 
+pub use class_name_pattern::{ClassNamePattern, Fragment};
+
 use std::{
     borrow::Cow,
     fs,
@@ -10,7 +12,6 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context};
-use class_name_pattern::ClassNamePattern;
 use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
