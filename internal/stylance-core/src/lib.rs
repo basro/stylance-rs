@@ -256,7 +256,8 @@ pub fn get_class_mappings<'a>(
             }
         }
     }
-
+    result.sort_by_key(|e| e.0);
+    result.dedup_by_key(|e| e.0);
     Ok(result)
 }
 
@@ -288,6 +289,10 @@ fn test_get_class_mappings() {
             color: blue;
         }
         .zig {
+
+        }
+        .bong {}
+        .zig {
             color: blue;
         }
     }"#;
@@ -295,11 +300,12 @@ fn test_get_class_mappings() {
     let hash = "abc1234";
     let mappings = get_class_mappings(css, &pattern, hash, true).unwrap();
     let expected = vec![
-        ("foo", "foo-abc1234"),
+        ("bag", "bag"),
         ("bar", "bar-abc1234"),
         ("baz", "baz"),
-        ("bag", "bag"),
         ("biz", "biz"),
+        ("bong", "bong-abc1234"),
+        ("foo", "foo-abc1234"),
         ("zig", "zig-abc1234"),
     ];
     if mappings.len() != expected.len() {
@@ -316,8 +322,9 @@ fn test_get_class_mappings() {
 
     let mappings = get_class_mappings(css, &pattern, hash, false).unwrap();
     let expected = vec![
-        ("foo", "foo-abc1234"),
         ("bar", "bar-abc1234"),
+        ("bong", "bong-abc1234"),
+        ("foo", "foo-abc1234"),
         ("zig", "zig-abc1234"),
     ];
     if mappings.len() != expected.len() {
