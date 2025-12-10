@@ -197,31 +197,23 @@ pub fn get_classes(
 
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let mut classes = parse::parse_css(&css_file_contents)
-        .map_err(|e| anyhow!("{e}"))?
-        .into_iter()
-        .filter_map(|c| {
-            if let CssFragment::Class(c) = c {
-                Some(c)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    classes.sort();
-    classes.dedup();
-
-    Ok((
-        hash_str.clone(),
-        classes
+    get_class_mappings(
+        &css_file_contents,
+        &config.class_name_pattern,
+        &hash_str,
+        false,
+    )
+    .map_err(|e| anyhow!("{e}"))
+    .map(|mappings| {
+        let classes = mappings
             .into_iter()
-            .map(|class| Class {
-                original_name: class.to_owned(),
-                hashed_name: config.class_name_pattern.apply(class, &hash_str),
+            .map(|(original, hashed)| Class {
+                original_name: original.to_owned(),
+                hashed_name: hashed.into_owned(),
             })
-            .collect(),
-    ))
+            .collect();
+        (hash_str, classes)
+    })
 }
 
 pub fn get_class_mappings<'a>(
