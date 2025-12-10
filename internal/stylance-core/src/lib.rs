@@ -15,7 +15,10 @@ use anyhow::{anyhow, bail, Context};
 use parse::{CssFragment, Global};
 use serde::Deserialize;
 use siphasher::sip::SipHasher13;
-use winnow::error::{ContextError, ParseError};
+use winnow::{
+    error::{ContextError, ParseError},
+    Parser,
+};
 
 fn default_extensions() -> Vec<String> {
     vec![".module.css".to_owned(), ".module.scss".to_owned()]
@@ -147,59 +150,26 @@ pub fn load_and_modify_css(
     let hash = make_hash(manifest_dir, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
-    let transform = transform_css(
-        &css_file_contents,
-        &config.class_name_pattern,
-        &hash,
-        true,
-        false,
-    )
-    .map_err(|e| anyhow!("{e}"))?;
+    let contents = transform_css(&css_file_contents, &config.class_name_pattern, &hash)
+        .map_err(|e| anyhow!("{e}"))?;
 
     Ok(ModifyCssResult {
         path: css_file.to_owned(),
         normalized_path_str: normalized_relative_path(manifest_dir, css_file)?,
         hash,
-        contents: transform.css,
+        contents,
     })
 }
 
-pub struct TransformCssResult<'a> {
-    pub css: String,
-    pub class_names: Vec<(&'a str, Cow<'a, str>)>,
-}
-
-/// Parses and optionally rewrites CSS class selectors.
-///
-/// Class selectors are transformed using `class_name_pattern.apply(class, hash)`.
-/// `:global(...)` selectors are preserved.
-///
-/// # Parameters
-/// * `css` — Source CSS.
-/// * `class_name_pattern` — Pattern used to rewrite class names.
-/// * `hash` — Hash/namespace passed to the pattern.
-/// * `rewrite_css` — If `true`, return a rewritten CSS string; if `false`,
-///   the returned css string is empty.
-/// * `collect_class_names` — If `true`, collect a map of original spans to
-///   rewritten class names; if `false`, the returned vec is empty.
-///
-/// # Returns
-/// A [`TransformCssResult`] containing the rewritten CSS (if requested)
-/// and/or the collected class-name mappings.
-///
-/// # Errors
-/// Returns a [`ParseError`] if the CSS cannot be parsed.
+/// Parses and rewrites CSS class selectors
 pub fn transform_css<'a>(
     css: &'a str,
     class_name_pattern: &ClassNamePattern,
     hash: &str,
-    rewrite_css: bool,
-    collect_class_names: bool,
-) -> Result<TransformCssResult<'a>, ParseError<&'a str, ContextError>> {
+) -> Result<String, ParseError<&'a str, ContextError>> {
     let fragments = parse::parse_css(&css)?;
 
-    let mut class_names = Vec::new();
-    let mut new_css = String::with_capacity(if rewrite_css { css.len() * 2 } else { 0 });
+    let mut new_css = String::with_capacity(css.len() * 2);
     let mut cursor = css;
 
     for fragment in fragments {
@@ -210,22 +180,12 @@ pub fn transform_css<'a>(
 
         let (before, after) = cursor.split_at(span.as_ptr() as usize - cursor.as_ptr() as usize);
         cursor = &after[span.len()..];
-        if rewrite_css {
-            new_css.push_str(before);
-            new_css.push_str(&replace);
-        }
-        if collect_class_names {
-            class_names.push((span, replace));
-        }
+        new_css.push_str(before);
+        new_css.push_str(&replace);
     }
 
-    if rewrite_css {
-        new_css.push_str(cursor);
-    }
-    Ok(TransformCssResult {
-        css: new_css,
-        class_names,
-    })
+    new_css.push_str(cursor);
+    Ok(new_css)
 }
 
 pub fn get_classes(
@@ -262,4 +222,137 @@ pub fn get_classes(
             })
             .collect(),
     ))
+}
+
+pub fn get_class_mappings<'a>(
+    css: &'a str,
+    class_name_pattern: &ClassNamePattern,
+    hash: &str,
+    include_global: bool,
+) -> Result<Vec<(&'a str, Cow<'a, str>)>, ParseError<&'a str, ContextError>> {
+    let fragments = parse::parse_css(&css)?;
+    let mut result = Vec::new();
+
+    if include_global {
+        for c in fragments {
+            match c {
+                CssFragment::Class(class) => {
+                    result.push((class, Cow::Owned(class_name_pattern.apply(class, hash))));
+                }
+                CssFragment::Global(global) => {
+                    let global_classes = resolve_global_inner_classes(global)?;
+                    result.extend(
+                        global_classes
+                            .into_iter()
+                            .map(|class| (class, Cow::Borrowed(class))),
+                    );
+                }
+            }
+        }
+    } else {
+        for c in fragments {
+            if let CssFragment::Class(class) = c {
+                result.push((class, Cow::Owned(class_name_pattern.apply(class, hash))));
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+fn resolve_global_inner_classes<'a>(
+    global: Global<'a>,
+) -> Result<Vec<&'a str>, ParseError<&'a str, ContextError>> {
+    let mut input = global.inner;
+    let fragments = parse::selector.parse(&mut input)?;
+    let mut result = Vec::new();
+    for c in fragments {
+        match c {
+            CssFragment::Class(class) => result.push(class),
+            CssFragment::Global(_) => {
+                unreachable!("Top level parser should have already errored if globals are nested")
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[test]
+fn test_get_class_mappings() {
+    let css = r#".foo.bar {
+        background-color: red;
+        :global(.baz) {
+            color: blue;
+        }
+        :global(.bag .biz) {
+            color: blue;
+        }
+        .zig {
+            color: blue;
+        }
+    }"#;
+    let pattern = ClassNamePattern::default();
+    let hash = "abc1234";
+    let mappings = get_class_mappings(css, &pattern, hash, true).unwrap();
+    let expected = vec![
+        ("foo", "foo-abc1234"),
+        ("bar", "bar-abc1234"),
+        ("baz", "baz"),
+        ("bag", "bag"),
+        ("biz", "biz"),
+        ("zig", "zig-abc1234"),
+    ];
+    if mappings.len() != expected.len() {
+        panic!(
+            "Expected {} mappings, got {}",
+            expected.len(),
+            mappings.len()
+        );
+    }
+    for (i, (original, hashed)) in mappings.iter().enumerate() {
+        assert_eq!(expected[i].0, *original);
+        assert_eq!(expected[i].1, *hashed);
+    }
+
+    let mappings = get_class_mappings(css, &pattern, hash, false).unwrap();
+    let expected = vec![
+        ("foo", "foo-abc1234"),
+        ("bar", "bar-abc1234"),
+        ("zig", "zig-abc1234"),
+    ];
+    if mappings.len() != expected.len() {
+        panic!(
+            "Expected {} mappings, got {}",
+            expected.len(),
+            mappings.len()
+        );
+    }
+    for (i, (original, hashed)) in mappings.iter().enumerate() {
+        assert_eq!(expected[i].0, *original);
+        assert_eq!(expected[i].1, *hashed);
+    }
+}
+
+#[test]
+fn test_parser_error_on_nested_globals() {
+    let css = r#".foo :global(.bar .baz) {
+        color: blue;
+    }"#;
+    let result = parse::parse_css(css);
+    assert!(result.is_ok());
+    let css = r#".foo :global(.bar :global(.baz)) {
+        color: blue;
+    }"#;
+    let result = parse::parse_css(css);
+    assert!(result.is_err());
+}
+
+#[test]
+#[should_panic]
+fn test_resolve_global_inner_classes_nested() {
+    let global = Global {
+        inner: ".foo :global(.bar)".into(),
+        outer: ":global(.foo :global(.bar))".into(),
+    };
+    let _ = resolve_global_inner_classes(global);
 }

@@ -132,7 +132,7 @@ pub fn stuff_till<'s>(
     )
 }
 
-fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
+pub(crate) fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
     fold_repeat(
         1..,
         alt((
