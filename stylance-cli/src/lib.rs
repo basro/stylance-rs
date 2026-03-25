@@ -160,3 +160,44 @@ pub fn run_silent(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stylance_core::Config;
+
+    #[cfg(unix)]
+    #[test]
+    fn test_symlinked_folder() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir()
+            .join(format!("stylance_test_{}", std::process::id()));
+        let manifest_dir = base.join("my_app");
+        let external_dir = base.join("external");
+
+        fs::create_dir_all(&manifest_dir).unwrap();
+        fs::create_dir_all(&external_dir).unwrap();
+
+        fs::write(
+            external_dir.join("style.module.css"),
+            ".myClass { color: red; }",
+        )
+        .unwrap();
+
+        // Create symlink: my_app/views -> ../external
+        symlink(&external_dir, manifest_dir.join("views")).unwrap();
+
+        let config = Config {
+            output_file: Some(base.join("out.css")),
+            folders: vec![std::path::PathBuf::from("./views/")],
+            ..Config::default()
+        };
+
+        let result = run_silent(&manifest_dir, &config, |_| {});
+
+        fs::remove_dir_all(&base).unwrap();
+
+        result.expect("run_silent should succeed with symlinked folder");
+    }
+}
