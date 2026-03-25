@@ -194,10 +194,23 @@ mod tests {
             ..Config::default()
         };
 
-        let result = run_silent(&manifest_dir, &config, |_| {});
+        run_silent(&manifest_dir, &config, |_| {})
+            .expect("run_silent should succeed with symlinked folder");
+
+        let output = fs::read_to_string(base.join("out.css"))
+            .expect("output file should exist");
 
         fs::remove_dir_all(&base).unwrap();
 
-        result.expect("run_silent should succeed with symlinked folder");
+        // Class name should be scoped: .myClass-<hash>
+        assert!(
+            output.contains(".myClass-"),
+            "output should contain scoped class name, got: {output}"
+        );
+        // CSS body should be preserved
+        assert!(
+            output.contains("color: red"),
+            "output should contain original CSS body, got: {output}"
+        );
     }
 }
