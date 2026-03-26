@@ -8,14 +8,19 @@ use stylance_core::{load_config, Config};
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
-use tokio::{sync::mpsc, task::spawn_blocking};
+use tokio::{
+    sync::mpsc,
+    task::{spawn_blocking, JoinSet},
+};
 use tokio_stream::{Stream, StreamExt};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
-    /// The path where your crate's Cargo toml is located
-    manifest_dir: PathBuf,
+    /// The path(s) where your crate's Cargo toml is located.
+    /// Multiple paths can be specified to process several crates at once.
+    #[arg(required = true)]
+    manifest_dirs: Vec<PathBuf>,
 
     /// Generate a file with all css modules concatenated
     #[arg(long)]
@@ -45,39 +50,54 @@ struct RunParams {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let run_params = make_run_params(&cli).await?;
-
-    run(&run_params.manifest_dir, &run_params.config)?;
+    let mut all_params = Vec::new();
+    for manifest_dir in &cli.manifest_dirs {
+        let params = make_run_params(&cli, manifest_dir).await?;
+        run(&params.manifest_dir, &params.config)?;
+        all_params.push(params);
+    }
 
     if cli.watch {
-        watch(cli, run_params).await?;
+        let cli = Arc::new(cli);
+
+        // Spawn one independent watch task per manifest dir, as each crate
+        // has its own config, folders, and output.
+        let mut set = JoinSet::new();
+        for params in all_params {
+            let cli = cli.clone();
+            set.spawn(watch_single(cli, params));
+        }
+
+        // If any watcher ends (only happens on error), abort the rest and exit.
+        if let Some(result) = set.join_next().await {
+            set.abort_all();
+            result??;
+        }
     }
 
     Ok(())
 }
 
-async fn make_run_params(cli: &Cli) -> anyhow::Result<RunParams> {
-    let manifest_dir = cli.manifest_dir.clone();
-    let mut config = spawn_blocking(move || load_config(&manifest_dir)).await??;
+async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunParams> {
+    let manifest_dir_buf = manifest_dir.to_path_buf();
+    let mut config = spawn_blocking(move || load_config(&manifest_dir_buf)).await??;
 
-    config.output_file = cli.output_file.clone().or_else(|| {
-        config
-            .output_file
-            .as_ref()
-            .map(|p| cli.manifest_dir.join(p))
-    });
+    config.output_file = cli
+        .output_file
+        .clone()
+        .or_else(|| config.output_file.as_ref().map(|p| manifest_dir.join(p)));
 
     config.output_dir = cli
         .output_dir
         .clone()
-        .or_else(|| config.output_dir.as_ref().map(|p| cli.manifest_dir.join(p)));
+        .or_else(|| config.output_dir.as_ref().map(|p| manifest_dir.join(p)));
 
     if !cli.folder.is_empty() {
         config.folders.clone_from(&cli.folder);
     }
 
     Ok(RunParams {
-        manifest_dir: cli.manifest_dir.clone(),
+        manifest_dir: manifest_dir.to_path_buf(),
         config,
     })
 }
@@ -157,17 +177,20 @@ async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> 
     }
 }
 
-async fn watch(cli: Cli, run_params: RunParams) -> anyhow::Result<()> {
+/// Watch a single manifest dir independently. Each crate gets its own
+/// watcher, config reload, and run loop — a change in one crate only
+/// triggers a rebuild for that crate.
+async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()> {
+    let manifest_dir = run_params.manifest_dir.clone();
     let (run_params_tx, mut run_params) = tokio::sync::watch::channel(Arc::new(run_params));
-
-    let manifest_dir = cli.manifest_dir.clone();
 
     // Watch Cargo.toml to update the current run_params.
     let cargo_toml_events = watch_file(&manifest_dir.join("Cargo.toml").canonicalize()?)?;
+    let manifest_dir_clone = manifest_dir.clone();
     tokio::spawn(async move {
         let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
         while debounced_next(&mut stream).await.is_some() {
-            match make_run_params(&cli).await {
+            match make_run_params(&cli, &manifest_dir_clone).await {
                 Ok(new_params) => {
                     if run_params_tx.send(Arc::new(new_params)).is_err() {
                         return;
