@@ -171,8 +171,7 @@ mod tests {
     fn test_symlinked_folder() {
         use std::os::unix::fs::symlink;
 
-        let base = std::env::temp_dir()
-            .join(format!("stylance_test_{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("stylance_test_{}", std::process::id()));
         let manifest_dir = base.join("my_app");
         let external_dir = base.join("external");
 
@@ -197,8 +196,7 @@ mod tests {
         run_silent(&manifest_dir, &config, |_| {})
             .expect("run_silent should succeed with symlinked folder");
 
-        let output = fs::read_to_string(base.join("out.css"))
-            .expect("output file should exist");
+        let output = fs::read_to_string(base.join("out.css")).expect("output file should exist");
 
         fs::remove_dir_all(&base).unwrap();
 
