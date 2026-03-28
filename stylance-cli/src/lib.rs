@@ -163,12 +163,12 @@ pub fn run_silent(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use stylance_core::Config;
-
     #[cfg(unix)]
     #[test]
     fn test_symlinked_folder() {
+        use super::*;
+        use stylance_core::Config;
+
         use std::os::unix::fs::symlink;
 
         let base = std::env::temp_dir().join(format!("stylance_test_{}", std::process::id()));
