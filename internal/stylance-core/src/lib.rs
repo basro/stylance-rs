@@ -105,9 +105,32 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     Ok(config)
 }
 
+/// Normalize a path by resolving `.` and `..` components and making it
+/// absolute, without following symlinks. This preserves logical paths through
+/// symlinked directories.
+fn normalize_path(path: &Path) -> anyhow::Result<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+
+    let mut components = Vec::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                components.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => components.push(other),
+        }
+    }
+    Ok(components.iter().collect())
+}
+
 fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<String> {
-    let base = base.canonicalize()?;
-    let subpath = subpath.canonicalize()?;
+    let base = normalize_path(base)?;
+    let subpath = normalize_path(subpath)?;
 
     let relative_path_str: String = subpath
         .strip_prefix(base)
