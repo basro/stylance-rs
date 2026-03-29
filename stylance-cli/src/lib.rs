@@ -23,7 +23,7 @@ pub fn run_silent(
     config: &Config,
     mut file_visit_callback: impl FnMut(&Path),
 ) -> anyhow::Result<()> {
-    let hash_root = stylance_core::resolve_hash_root(manifest_dir, config)?;
+    let hash_root = stylance_core::resolve_hash_root(manifest_dir, config);
     let mut modified_css_files = Vec::new();
 
     for folder in &config.folders {

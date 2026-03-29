@@ -158,10 +158,10 @@ fn make_hash(hash_root: &Path, css_file: &Path, hash_len: usize) -> anyhow::Resu
 /// Resolve the effective hash root directory.
 /// If `config.hash_root_path` is set, it is resolved relative to `manifest_dir`.
 /// Otherwise, `manifest_dir` is used as the hash root.
-pub fn resolve_hash_root(manifest_dir: &Path, config: &Config) -> anyhow::Result<PathBuf> {
+pub fn resolve_hash_root(manifest_dir: &Path, config: &Config) -> PathBuf {
     match &config.hash_root_path {
-        Some(hash_root_path) => normalize_path(&manifest_dir.join(hash_root_path)),
-        None => Ok(manifest_dir.to_path_buf()),
+        Some(hash_root_path) => manifest_dir.join(hash_root_path),
+        None => manifest_dir.to_path_buf(),
     }
 }
 
