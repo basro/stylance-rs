@@ -23,6 +23,7 @@ pub fn run_silent(
     config: &Config,
     mut file_visit_callback: impl FnMut(&Path),
 ) -> anyhow::Result<()> {
+    let hash_root = stylance_core::resolve_hash_root(manifest_dir, config)?;
     let mut modified_css_files = Vec::new();
 
     for folder in &config.folders {
@@ -36,7 +37,7 @@ pub fn run_silent(
                 if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
                     file_visit_callback(entry.path());
                     modified_css_files.push(stylance_core::load_and_modify_css(
-                        manifest_dir,
+                        &hash_root,
                         entry.path(),
                         config,
                     )?);
