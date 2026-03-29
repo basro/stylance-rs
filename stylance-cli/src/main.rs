@@ -93,7 +93,7 @@ async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunPa
         .or_else(|| config.output_dir.as_ref().map(|p| manifest_dir.join(p)));
 
     if !cli.folder.is_empty() {
-        config.folders.clone_from(&cli.folder);
+        config.folders = Some(cli.folder.clone());
     }
 
     Ok(RunParams {
@@ -226,7 +226,7 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
             &run_params
                 .borrow()
                 .config
-                .folders
+                .folders()
                 .iter()
                 .map(|f| manifest_dir.join(f))
                 .collect(),
@@ -241,7 +241,7 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
                     let str_path = path.to_string_lossy();
                     if run_params
                         .config
-                        .extensions
+                        .extensions()
                         .iter()
                         .any(|ext| str_path.ends_with(ext))
                     {
