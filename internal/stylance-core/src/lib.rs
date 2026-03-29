@@ -42,6 +42,74 @@ pub struct Config {
     #[serde(default)]
     pub class_name_pattern: ClassNamePattern,
     pub hash_root_path: Option<PathBuf>,
+    #[serde(default)]
+    pub workspace: bool,
+}
+
+/// Raw config with all fields optional, used for both workspace-level
+/// and crate-level parsing so we can distinguish "not set" from "set to default".
+#[derive(Deserialize, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct RawConfig {
+    pub output_file: Option<PathBuf>,
+    pub output_dir: Option<PathBuf>,
+    pub extensions: Option<Vec<String>>,
+    pub folders: Option<Vec<PathBuf>>,
+    pub scss_prelude: Option<String>,
+    pub hash_len: Option<usize>,
+    pub class_name_pattern: Option<ClassNamePattern>,
+    pub hash_root_path: Option<PathBuf>,
+    #[serde(default)]
+    pub workspace: bool,
+}
+
+impl RawConfig {
+    fn into_config(self) -> Config {
+        Config {
+            output_file: self.output_file,
+            output_dir: self.output_dir,
+            extensions: self.extensions.unwrap_or_else(default_extensions),
+            folders: self.folders.unwrap_or_else(default_folders),
+            scss_prelude: self.scss_prelude,
+            hash_len: self.hash_len.unwrap_or_else(default_hash_len),
+            class_name_pattern: self.class_name_pattern.unwrap_or_default(),
+            hash_root_path: self.hash_root_path,
+            workspace: self.workspace,
+        }
+    }
+
+    /// Merge workspace raw config as defaults under crate raw config.
+    /// Crate-level explicit values take precedence.
+    fn merge_workspace(self, ws: &RawConfig, manifest_dir: &Path, workspace_root: &Path) -> Config {
+        let hash_root_path = self
+            .hash_root_path
+            .or_else(|| ws.hash_root_path.clone())
+            .or_else(|| pathdiff::diff_paths(workspace_root, manifest_dir));
+
+        Config {
+            output_file: self.output_file.or_else(|| ws.output_file.clone()),
+            output_dir: self.output_dir.or_else(|| ws.output_dir.clone()),
+            extensions: self
+                .extensions
+                .or_else(|| ws.extensions.clone())
+                .unwrap_or_else(default_extensions),
+            folders: self
+                .folders
+                .or_else(|| ws.folders.clone())
+                .unwrap_or_else(default_folders),
+            scss_prelude: self.scss_prelude.or_else(|| ws.scss_prelude.clone()),
+            hash_len: self
+                .hash_len
+                .or(ws.hash_len)
+                .unwrap_or_else(default_hash_len),
+            class_name_pattern: self
+                .class_name_pattern
+                .or_else(|| ws.class_name_pattern.clone())
+                .unwrap_or_default(),
+            hash_root_path,
+            workspace: true,
+        }
+    }
 }
 
 impl Default for Config {
@@ -55,23 +123,37 @@ impl Default for Config {
             hash_len: default_hash_len(),
             class_name_pattern: Default::default(),
             hash_root_path: None,
+            workspace: false,
         }
     }
 }
 
 #[derive(Deserialize)]
-pub struct CargoToml {
+struct CargoToml {
     package: Option<CargoTomlPackage>,
+    workspace: Option<CargoTomlWorkspace>,
 }
 
 #[derive(Deserialize)]
-pub struct CargoTomlPackage {
+struct CargoTomlPackage {
     metadata: Option<CargoTomlPackageMetadata>,
+    /// Explicit workspace path, e.g. `workspace = "../my-workspace"`
+    workspace: Option<toml::Value>,
 }
 
 #[derive(Deserialize)]
-pub struct CargoTomlPackageMetadata {
-    stylance: Option<Config>,
+struct CargoTomlPackageMetadata {
+    stylance: Option<RawConfig>,
+}
+
+#[derive(Deserialize)]
+struct CargoTomlWorkspace {
+    metadata: Option<CargoTomlWorkspaceMetadata>,
+}
+
+#[derive(Deserialize)]
+struct CargoTomlWorkspaceMetadata {
+    stylance: Option<RawConfig>,
 }
 
 pub fn hash_string(input: &str) -> u64 {
@@ -85,19 +167,93 @@ pub struct Class {
     pub hashed_name: String,
 }
 
+/// Find the workspace root directory for a given crate manifest dir.
+///
+/// First checks if the crate's Cargo.toml has an explicit `[package] workspace` field.
+/// Otherwise, walks up the directory tree looking for a Cargo.toml with a `[workspace]` section.
+fn find_workspace_root(manifest_dir: &Path) -> anyhow::Result<PathBuf> {
+    let cargo_toml_contents =
+        fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
+    let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
+
+    // Check for explicit workspace path in [package] workspace = "path"
+    if let Some(CargoTomlPackage {
+        workspace: Some(toml::Value::String(workspace_path)),
+        ..
+    }) = &cargo_toml.package
+    {
+        return Ok(manifest_dir.join(workspace_path));
+    }
+
+    // Walk up looking for a Cargo.toml with [workspace]
+    let mut current = manifest_dir.to_path_buf();
+    loop {
+        if !current.pop() {
+            bail!(
+                "Could not find workspace root for {}. \
+                 No parent Cargo.toml with [workspace] was found.",
+                manifest_dir.display()
+            );
+        }
+
+        let candidate = current.join("Cargo.toml");
+        if candidate.exists() {
+            let contents = fs::read_to_string(&candidate)
+                .with_context(|| format!("Failed to read {}", candidate.display()))?;
+            let parsed: CargoToml = toml::from_str(&contents)?;
+            if parsed.workspace.is_some() {
+                return Ok(current);
+            }
+        }
+    }
+}
+
+/// Load the workspace stylance config from a workspace root directory.
+fn load_workspace_config(workspace_root: &Path) -> anyhow::Result<Option<RawConfig>> {
+    let cargo_toml_contents = fs::read_to_string(workspace_root.join("Cargo.toml"))
+        .context("Failed to read workspace Cargo.toml")?;
+    let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
+
+    Ok(cargo_toml
+        .workspace
+        .and_then(|w| w.metadata)
+        .and_then(|m| m.stylance))
+}
+
 pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     let cargo_toml_contents =
         fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
     let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
 
-    let config = match cargo_toml.package {
+    let raw = match cargo_toml.package {
         Some(CargoTomlPackage {
             metadata:
                 Some(CargoTomlPackageMetadata {
-                    stylance: Some(config),
+                    stylance: Some(raw),
                 }),
-        }) => config,
-        _ => Config::default(),
+            ..
+        }) => raw,
+        _ => RawConfig::default(),
+    };
+
+    let config = if raw.workspace {
+        let workspace_root = find_workspace_root(manifest_dir)?;
+        match load_workspace_config(&workspace_root)? {
+            Some(ws_config) => raw.merge_workspace(&ws_config, manifest_dir, &workspace_root),
+            None => {
+                // workspace = true but no [workspace.metadata.stylance] found.
+                // Still set hash_root_path to workspace root implicitly.
+                let hash_root_path = raw
+                    .hash_root_path
+                    .clone()
+                    .or_else(|| pathdiff::diff_paths(&workspace_root, manifest_dir));
+                let mut config = raw.into_config();
+                config.hash_root_path = hash_root_path;
+                config
+            }
+        }
+    } else {
+        raw.into_config()
     };
 
     if config.extensions.iter().any(|e| e.is_empty()) {
