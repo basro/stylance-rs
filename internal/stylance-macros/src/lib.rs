@@ -12,7 +12,8 @@ fn try_import_style_classes_with_path(
     identifier_span: Span,
 ) -> anyhow::Result<TokenStream> {
     let config = stylance_core::load_config(manifest_path)?;
-    let (_, classes) = stylance_core::get_classes(manifest_path, file_path, &config)?;
+    let hash_root = stylance_core::resolve_hash_root(manifest_path, &config);
+    let (_, classes) = stylance_core::get_classes(&hash_root, file_path, &config)?;
 
     let binding = file_path.canonicalize().unwrap();
     let full_path = binding.to_string_lossy();

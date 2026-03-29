@@ -187,6 +187,103 @@ fn test_cli_folder_override() {
 }
 
 #[test]
+fn test_hash_root_path_changes_hash() {
+    let crate1 = fixtures_dir().join("crate1");
+
+    let tmpdir = std::env::temp_dir().join("stylance_test_hash_root");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+
+    // Run without hash_root_path
+    let output_default = tmpdir.join("default.css");
+    let mut config = load_config(&crate1).unwrap();
+    config.output_file = Some(output_default.clone());
+    run_silent(&crate1, &config, |_| {}).unwrap();
+    let content_default = std::fs::read_to_string(&output_default).unwrap();
+
+    // Run with hash_root_path pointing to the fixtures dir (parent of crate1)
+    let output_custom = tmpdir.join("custom.css");
+    let mut config2 = load_config(&crate1).unwrap();
+    config2.output_file = Some(output_custom.clone());
+    config2.hash_root_path = Some(PathBuf::from("../"));
+    run_silent(&crate1, &config2, |_| {}).unwrap();
+    let content_custom = std::fs::read_to_string(&output_custom).unwrap();
+
+    // Both should contain transformed class names
+    assert!(content_default.contains("container-"));
+    assert!(content_custom.contains("container-"));
+
+    // But the hashes should differ because the relative path changed
+    assert_ne!(
+        content_default, content_custom,
+        "hash_root_path should produce different hashes"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_hash_root_path_makes_same_filename_unique() {
+    // Simulate two crates with the same relative CSS file path (src/style.module.css)
+    // When both use hash_root_path pointing to a common root, they should get different hashes.
+    let tmpdir = std::env::temp_dir().join("stylance_test_hash_root_unique");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+
+    let crate_a = tmpdir.join("crate_a");
+    let crate_b = tmpdir.join("crate_b");
+    std::fs::create_dir_all(crate_a.join("src")).unwrap();
+    std::fs::create_dir_all(crate_b.join("src")).unwrap();
+
+    // Same CSS content and same relative path in both crates
+    let css_content = ".btn { color: red; }";
+    std::fs::write(crate_a.join("src/style.module.css"), css_content).unwrap();
+    std::fs::write(crate_b.join("src/style.module.css"), css_content).unwrap();
+
+    // Without hash_root_path: both crates produce the same hash
+    let config_no_root = Config {
+        output_file: Some(tmpdir.join("a_default.css")),
+        ..Config::default()
+    };
+    run_silent(&crate_a, &config_no_root, |_| {}).unwrap();
+    let out_a_default = std::fs::read_to_string(tmpdir.join("a_default.css")).unwrap();
+
+    let config_no_root_b = Config {
+        output_file: Some(tmpdir.join("b_default.css")),
+        ..Config::default()
+    };
+    run_silent(&crate_b, &config_no_root_b, |_| {}).unwrap();
+    let out_b_default = std::fs::read_to_string(tmpdir.join("b_default.css")).unwrap();
+
+    assert_eq!(
+        out_a_default, out_b_default,
+        "without hash_root_path, same relative paths should produce same hashes"
+    );
+
+    // With hash_root_path pointing to the common parent: hashes should differ
+    let config_a = Config {
+        output_file: Some(tmpdir.join("a_rooted.css")),
+        hash_root_path: Some(PathBuf::from("../")),
+        ..Config::default()
+    };
+    run_silent(&crate_a, &config_a, |_| {}).unwrap();
+    let out_a_rooted = std::fs::read_to_string(tmpdir.join("a_rooted.css")).unwrap();
+
+    let config_b = Config {
+        output_file: Some(tmpdir.join("b_rooted.css")),
+        hash_root_path: Some(PathBuf::from("../")),
+        ..Config::default()
+    };
+    run_silent(&crate_b, &config_b, |_| {}).unwrap();
+    let out_b_rooted = std::fs::read_to_string(tmpdir.join("b_rooted.css")).unwrap();
+
+    assert_ne!(
+        out_a_rooted, out_b_rooted,
+        "with hash_root_path to common parent, different crates should produce different hashes"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
 fn test_watch_produces_output_before_watching() {
     let binary = env!("CARGO_BIN_EXE_stylance");
     let crate1 = fixtures_dir().join("crate1");

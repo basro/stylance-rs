@@ -41,6 +41,7 @@ pub struct Config {
     pub hash_len: usize,
     #[serde(default)]
     pub class_name_pattern: ClassNamePattern,
+    pub hash_root_path: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -53,6 +54,7 @@ impl Default for Config {
             scss_prelude: None,
             hash_len: default_hash_len(),
             class_name_pattern: Default::default(),
+            hash_root_path: None,
         }
     }
 }
@@ -144,13 +146,23 @@ fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<Strin
     Ok(relative_path_str)
 }
 
-fn make_hash(manifest_dir: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
-    let relative_path_str = normalized_relative_path(manifest_dir, css_file)?;
+fn make_hash(hash_root: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
+    let relative_path_str = normalized_relative_path(hash_root, css_file)?;
 
     let hash = hash_string(&relative_path_str);
     let mut hash_str = format!("{hash:x}");
     hash_str.truncate(hash_len);
     Ok(hash_str)
+}
+
+/// Resolve the effective hash root directory.
+/// If `config.hash_root_path` is set, it is resolved relative to `manifest_dir`.
+/// Otherwise, `manifest_dir` is used as the hash root.
+pub fn resolve_hash_root(manifest_dir: &Path, config: &Config) -> PathBuf {
+    match &config.hash_root_path {
+        Some(hash_root_path) => manifest_dir.join(hash_root_path),
+        None => manifest_dir.to_path_buf(),
+    }
 }
 
 pub struct ModifyCssResult {
@@ -161,11 +173,11 @@ pub struct ModifyCssResult {
 }
 
 pub fn load_and_modify_css(
-    manifest_dir: &Path,
+    hash_root: &Path,
     css_file: &Path,
     config: &Config,
 ) -> anyhow::Result<ModifyCssResult> {
-    let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
+    let hash_str = make_hash(hash_root, css_file, config.hash_len)?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
     let fragments = parse::parse_css(&css_file_contents).map_err(|e| anyhow!("{e}"))?;
@@ -192,18 +204,18 @@ pub fn load_and_modify_css(
 
     Ok(ModifyCssResult {
         path: css_file.to_owned(),
-        normalized_path_str: normalized_relative_path(manifest_dir, css_file)?,
+        normalized_path_str: normalized_relative_path(hash_root, css_file)?,
         hash: hash_str,
         contents: new_file,
     })
 }
 
 pub fn get_classes(
-    manifest_dir: &Path,
+    hash_root: &Path,
     css_file: &Path,
     config: &Config,
 ) -> anyhow::Result<(String, Vec<Class>)> {
-    let hash_str = make_hash(manifest_dir, css_file, config.hash_len)?;
+    let hash_str = make_hash(hash_root, css_file, config.hash_len)?;
 
     let css_file_contents = fs::read_to_string(css_file)?;
 
