@@ -419,19 +419,17 @@ fn test_hash_root_path_makes_same_filename_unique() {
     std::fs::write(crate_b.join("src/style.module.css"), css_content).unwrap();
 
     // Without hash_root_path: both crates produce the same hash
-    let mut config_no_root = Config {
+    let config_no_root = Config {
         output_file: Some(tmpdir.join("a_default.css")),
         ..Config::default()
     };
-    config_no_root.apply_defaults();
     run_silent(&crate_a, &config_no_root, |_| {}).unwrap();
     let out_a_default = std::fs::read_to_string(tmpdir.join("a_default.css")).unwrap();
 
-    let mut config_no_root_b = Config {
+    let config_no_root_b = Config {
         output_file: Some(tmpdir.join("b_default.css")),
         ..Config::default()
     };
-    config_no_root_b.apply_defaults();
     run_silent(&crate_b, &config_no_root_b, |_| {}).unwrap();
     let out_b_default = std::fs::read_to_string(tmpdir.join("b_default.css")).unwrap();
 
@@ -441,21 +439,19 @@ fn test_hash_root_path_makes_same_filename_unique() {
     );
 
     // With hash_root_path pointing to the common parent: hashes should differ
-    let mut config_a = Config {
+    let config_a = Config {
         output_file: Some(tmpdir.join("a_rooted.css")),
         hash_root_path: Some(PathBuf::from("../")),
         ..Config::default()
     };
-    config_a.apply_defaults();
     run_silent(&crate_a, &config_a, |_| {}).unwrap();
     let out_a_rooted = std::fs::read_to_string(tmpdir.join("a_rooted.css")).unwrap();
 
-    let mut config_b = Config {
+    let config_b = Config {
         output_file: Some(tmpdir.join("b_rooted.css")),
         hash_root_path: Some(PathBuf::from("../")),
         ..Config::default()
     };
-    config_b.apply_defaults();
     run_silent(&crate_b, &config_b, |_| {}).unwrap();
     let out_b_rooted = std::fs::read_to_string(tmpdir.join("b_rooted.css")).unwrap();
 

@@ -192,12 +192,11 @@ mod tests {
         // Create symlink: my_app/views -> ../external
         symlink(&external_dir, manifest_dir.join("views")).unwrap();
 
-        let mut config = Config {
+        let config = Config {
             output_file: Some(base.join("out.css")),
             folders: Some(vec![std::path::PathBuf::from("./views/")]),
             ..Config::default()
         };
-        config.apply_defaults();
 
         run_silent(&manifest_dir, &config, |_| {})
             .expect("run_silent should succeed with symlinked folder");

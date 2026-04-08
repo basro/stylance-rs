@@ -44,11 +44,15 @@ pub struct Config {
 
 impl Config {
     pub fn extensions(&self) -> &[String] {
-        self.extensions.as_deref().unwrap_or(&[])
+        static DEFAULT_EXTENSIONS: std::sync::LazyLock<Vec<String>> =
+            std::sync::LazyLock::new(default_extensions);
+        self.extensions.as_deref().unwrap_or(&DEFAULT_EXTENSIONS)
     }
 
     pub fn folders(&self) -> &[PathBuf] {
-        self.folders.as_deref().unwrap_or(&[])
+        static DEFAULT_FOLDERS: std::sync::LazyLock<Vec<PathBuf>> =
+            std::sync::LazyLock::new(default_folders);
+        self.folders.as_deref().unwrap_or(&DEFAULT_FOLDERS)
     }
 
     pub fn hash_len(&self) -> usize {
@@ -56,49 +60,24 @@ impl Config {
     }
 
     pub fn class_name_pattern(&self) -> &ClassNamePattern {
-        // Can't return a default ref from Option, so we use a lazy static-like approach
-        // Actually we need to store the default somewhere. Let's just use a method on ClassNamePattern.
         static DEFAULT_PATTERN: std::sync::LazyLock<ClassNamePattern> =
             std::sync::LazyLock::new(ClassNamePattern::default);
         self.class_name_pattern.as_ref().unwrap_or(&DEFAULT_PATTERN)
     }
 
     /// Merge workspace config as defaults under this (crate) config.
-    /// Crate-level explicit values take precedence.
-    fn merge_workspace(&mut self, ws: Config) {
-        if self.output_file.is_none() {
-            self.output_file = ws.output_file;
-        }
-        if self.output_dir.is_none() {
-            self.output_dir = ws.output_dir;
-        }
-        if self.extensions.is_none() {
-            self.extensions = ws.extensions;
-        }
-        if self.folders.is_none() {
-            self.folders = ws.folders;
-        }
-        if self.scss_prelude.is_none() {
-            self.scss_prelude = ws.scss_prelude;
-        }
-        if self.hash_len.is_none() {
-            self.hash_len = ws.hash_len;
-        }
-        if self.class_name_pattern.is_none() {
-            self.class_name_pattern = ws.class_name_pattern;
-        }
-        if self.hash_root_path.is_none() {
-            self.hash_root_path = ws.hash_root_path;
-        }
-    }
-
-    /// Apply defaults for fields that are still None after merging.
-    pub fn apply_defaults(&mut self) {
-        if self.extensions.is_none() {
-            self.extensions = Some(default_extensions());
-        }
-        if self.folders.is_none() {
-            self.folders = Some(default_folders());
+    /// Crate-level explicit values take precedence; returns a new Config.
+    fn merged_with_workspace(self, ws: Config) -> Config {
+        Config {
+            output_file: self.output_file.or(ws.output_file),
+            output_dir: self.output_dir.or(ws.output_dir),
+            extensions: self.extensions.or(ws.extensions),
+            folders: self.folders.or(ws.folders),
+            scss_prelude: self.scss_prelude.or(ws.scss_prelude),
+            hash_len: self.hash_len.or(ws.hash_len),
+            class_name_pattern: self.class_name_pattern.or(ws.class_name_pattern),
+            hash_root_path: self.hash_root_path.or(ws.hash_root_path),
+            workspace: self.workspace,
         }
     }
 }
@@ -143,17 +122,28 @@ pub struct Class {
     pub hashed_name: String,
 }
 
-/// Find the workspace root directory from an already-parsed CargoToml.
+/// Find the workspace root directory and its parsed CargoToml.
 /// First checks for an explicit `[package] workspace` field.
 /// Otherwise, walks up the directory tree looking for a Cargo.toml with `[workspace]`.
-fn find_workspace_root(manifest_dir: &Path, cargo_toml: &CargoToml) -> anyhow::Result<PathBuf> {
+fn find_workspace_root(
+    manifest_dir: &Path,
+    cargo_toml: &CargoToml,
+) -> anyhow::Result<(PathBuf, CargoToml)> {
     // Check for explicit workspace path in [package] workspace = "path"
     if let Some(CargoTomlPackage {
         workspace_path: Some(toml::Value::String(workspace_path)),
         ..
     }) = &cargo_toml.package
     {
-        return Ok(manifest_dir.join(workspace_path));
+        let ws_root = manifest_dir.join(workspace_path);
+        let contents = fs::read_to_string(ws_root.join("Cargo.toml")).with_context(|| {
+            format!(
+                "Failed to read workspace Cargo.toml at {}",
+                ws_root.display()
+            )
+        })?;
+        let parsed: CargoToml = toml::from_str(&contents)?;
+        return Ok((ws_root, parsed));
     }
 
     // Walk up looking for a Cargo.toml with [workspace]
@@ -173,28 +163,35 @@ fn find_workspace_root(manifest_dir: &Path, cargo_toml: &CargoToml) -> anyhow::R
                 .with_context(|| format!("Failed to read {}", candidate.display()))?;
             let parsed: CargoToml = toml::from_str(&contents)?;
             if parsed.workspace.is_some() {
-                return Ok(current);
+                return Ok((current, parsed));
             }
         }
     }
-}
-
-/// Load the workspace stylance config from a workspace root directory.
-fn load_workspace_config(workspace_root: &Path) -> anyhow::Result<Option<Config>> {
-    let cargo_toml_contents = fs::read_to_string(workspace_root.join("Cargo.toml"))
-        .context("Failed to read workspace Cargo.toml")?;
-    let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
-
-    Ok(cargo_toml
-        .workspace
-        .and_then(|w| w.metadata)
-        .and_then(|m| m.stylance))
 }
 
 /// Compute a relative path from `base` to `target` using `..` components.
 fn relative_path(base: &Path, target: &Path) -> anyhow::Result<PathBuf> {
     let base = normalize_path(base)?;
     let target = normalize_path(target)?;
+
+    // On Windows, verify both paths are on the same drive
+    #[cfg(target_os = "windows")]
+    {
+        use std::path::Component;
+        let base_prefix = base.components().next();
+        let target_prefix = target.components().next();
+        if let (Some(Component::Prefix(a)), Some(Component::Prefix(b))) =
+            (base_prefix, target_prefix)
+        {
+            if a.kind() != b.kind() {
+                bail!(
+                    "Cannot compute relative path between different drives: {} and {}",
+                    base.display(),
+                    target.display()
+                );
+            }
+        }
+    }
 
     let mut base_iter = base.components().peekable();
     let mut target_iter = target.components().peekable();
@@ -231,7 +228,7 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
         .and_then(|m| m.stylance.as_ref())
         .is_some_and(|c| c.workspace);
 
-    let workspace_root = if is_workspace {
+    let workspace = if is_workspace {
         Some(find_workspace_root(manifest_dir, &cargo_toml)?)
     } else {
         None
@@ -243,16 +240,18 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
         .and_then(|m| m.stylance)
         .unwrap_or_default();
 
-    if let Some(workspace_root) = &workspace_root {
-        if let Some(ws_config) = load_workspace_config(workspace_root)? {
-            config.merge_workspace(ws_config);
+    if let Some((workspace_root, ws_cargo_toml)) = workspace {
+        let ws_config = ws_cargo_toml
+            .workspace
+            .and_then(|w| w.metadata)
+            .and_then(|m| m.stylance);
+        if let Some(ws_config) = ws_config {
+            config = config.merged_with_workspace(ws_config);
         }
         if config.hash_root_path.is_none() {
-            config.hash_root_path = Some(relative_path(manifest_dir, workspace_root)?);
+            config.hash_root_path = Some(relative_path(manifest_dir, &workspace_root)?);
         }
     }
-
-    config.apply_defaults();
 
     if config.extensions().iter().any(|e| e.is_empty()) {
         bail!("Stylance config extensions can't be empty strings");
