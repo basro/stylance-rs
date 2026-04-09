@@ -1,4 +1,6 @@
+use anyhow::bail;
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -46,6 +48,36 @@ struct RunParams {
     config: Config,
 }
 
+fn check_output_collisions(all_params: &[RunParams]) -> anyhow::Result<()> {
+    let mut seen_files: HashMap<PathBuf, &Path> = HashMap::new();
+    let mut seen_dirs: HashMap<PathBuf, &Path> = HashMap::new();
+
+    for params in all_params {
+        if let Some(output_file) = &params.config.output_file {
+            if let Some(prev) = seen_files.insert(output_file.clone(), &params.manifest_dir) {
+                bail!(
+                    "Multiple crates share the same output_file: {}\n  - {}\n  - {}",
+                    output_file.display(),
+                    prev.display(),
+                    params.manifest_dir.display(),
+                );
+            }
+        }
+        if let Some(output_dir) = &params.config.output_dir {
+            if let Some(prev) = seen_dirs.insert(output_dir.clone(), &params.manifest_dir) {
+                bail!(
+                    "Multiple crates share the same output_dir: {}\n  - {}\n  - {}",
+                    output_dir.display(),
+                    prev.display(),
+                    params.manifest_dir.display(),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -53,8 +85,13 @@ async fn main() -> anyhow::Result<()> {
     let mut all_params = Vec::new();
     for manifest_dir in &cli.manifest_dirs {
         let params = make_run_params(&cli, manifest_dir).await?;
-        run(&params.manifest_dir, &params.config)?;
         all_params.push(params);
+    }
+
+    check_output_collisions(&all_params)?;
+
+    for params in &all_params {
+        run(&params.manifest_dir, &params.config)?;
     }
 
     if cli.watch {
