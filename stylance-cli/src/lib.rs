@@ -26,7 +26,7 @@ pub fn run_silent(
     let hash_root = stylance_core::resolve_hash_root(manifest_dir, config);
     let mut modified_css_files = Vec::new();
 
-    for folder in &config.folders {
+    for folder in config.folders() {
         for (entry, meta) in WalkDir::new(manifest_dir.join(folder))
             .into_iter()
             .filter_map(|e| e.ok())
@@ -34,7 +34,11 @@ pub fn run_silent(
         {
             if meta.is_file() {
                 let path_str = entry.path().to_string_lossy();
-                if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
+                if config
+                    .extensions()
+                    .iter()
+                    .any(|ext| path_str.ends_with(ext))
+                {
                     file_visit_callback(entry.path());
                     modified_css_files.push(stylance_core::load_and_modify_css(
                         &hash_root,
@@ -190,7 +194,7 @@ mod tests {
 
         let config = Config {
             output_file: Some(base.join("out.css")),
-            folders: vec![std::path::PathBuf::from("./views/")],
+            folders: Some(vec![std::path::PathBuf::from("./views/")]),
             ..Config::default()
         };
 

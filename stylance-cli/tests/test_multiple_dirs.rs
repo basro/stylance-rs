@@ -187,6 +187,186 @@ fn test_cli_folder_override() {
 }
 
 #[test]
+fn test_workspace_config_inheritance() {
+    // Create a workspace with two crates that opt into workspace config
+    let tmpdir = std::env::temp_dir().join("stylance_test_workspace");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+
+    let crate_a = tmpdir.join("crates").join("crate_a");
+    let crate_b = tmpdir.join("crates").join("crate_b");
+    std::fs::create_dir_all(crate_a.join("src")).unwrap();
+    std::fs::create_dir_all(crate_b.join("src")).unwrap();
+
+    // Workspace Cargo.toml with shared stylance config
+    std::fs::write(
+        tmpdir.join("Cargo.toml"),
+        r#"
+[workspace]
+members = ["crates/*"]
+
+[workspace.metadata.stylance]
+extensions = [".module.css"]
+hash_len = 5
+"#,
+    )
+    .unwrap();
+
+    // Crate A: opts into workspace config
+    std::fs::write(
+        crate_a.join("Cargo.toml"),
+        r#"
+[package]
+name = "crate-a"
+version = "0.1.0"
+
+[package.metadata.stylance]
+workspace = true
+"#,
+    )
+    .unwrap();
+
+    // Crate B: opts into workspace config
+    std::fs::write(
+        crate_b.join("Cargo.toml"),
+        r#"
+[package]
+name = "crate-b"
+version = "0.1.0"
+
+[package.metadata.stylance]
+workspace = true
+"#,
+    )
+    .unwrap();
+
+    std::fs::write(crate_a.join("src/style.module.css"), ".btn { color: red; }").unwrap();
+    std::fs::write(
+        crate_b.join("src/style.module.css"),
+        ".btn { color: blue; }",
+    )
+    .unwrap();
+
+    let config_a = load_config(&crate_a).unwrap();
+    let config_b = load_config(&crate_b).unwrap();
+
+    // Workspace config should be inherited: hash_len = 5
+    assert_eq!(config_a.hash_len(), 5);
+    assert_eq!(config_b.hash_len(), 5);
+
+    // extensions should come from workspace
+    assert_eq!(config_a.extensions(), &[".module.css"]);
+
+    // hash_root_path should be implicitly set to workspace root
+    assert!(config_a.hash_root_path.is_some());
+    assert!(config_b.hash_root_path.is_some());
+
+    // Same relative CSS path in both crates should produce different hashes
+    let output_a = tmpdir.join("a.css");
+    let output_b = tmpdir.join("b.css");
+
+    let mut config_a = config_a;
+    config_a.output_file = Some(output_a.clone());
+    let mut config_b = config_b;
+    config_b.output_file = Some(output_b.clone());
+
+    run_silent(&crate_a, &config_a, |_| {}).unwrap();
+    run_silent(&crate_b, &config_b, |_| {}).unwrap();
+
+    let content_a = std::fs::read_to_string(&output_a).unwrap();
+    let content_b = std::fs::read_to_string(&output_b).unwrap();
+
+    // Both should have transformed classes
+    assert!(content_a.contains(".btn-"));
+    assert!(content_b.contains(".btn-"));
+
+    // But hashes should differ (different crates, same relative path)
+    assert_ne!(content_a, content_b);
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_workspace_config_crate_override() {
+    // Crate-level config should override workspace config
+    let tmpdir = std::env::temp_dir().join("stylance_test_ws_override");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+
+    let crate_dir = tmpdir.join("my_crate");
+    std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+
+    std::fs::write(
+        tmpdir.join("Cargo.toml"),
+        r#"
+[workspace]
+members = ["my_crate"]
+
+[workspace.metadata.stylance]
+hash_len = 5
+"#,
+    )
+    .unwrap();
+
+    // Crate overrides hash_len
+    std::fs::write(
+        crate_dir.join("Cargo.toml"),
+        r#"
+[package]
+name = "my-crate"
+version = "0.1.0"
+
+[package.metadata.stylance]
+workspace = true
+hash_len = 10
+"#,
+    )
+    .unwrap();
+
+    let config = load_config(&crate_dir).unwrap();
+    assert_eq!(config.hash_len(), 10);
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_workspace_false_no_inheritance() {
+    // Without workspace = true, no inheritance should happen
+    let tmpdir = std::env::temp_dir().join("stylance_test_ws_false");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+
+    let crate_dir = tmpdir.join("my_crate");
+    std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+
+    std::fs::write(
+        tmpdir.join("Cargo.toml"),
+        r#"
+[workspace]
+members = ["my_crate"]
+
+[workspace.metadata.stylance]
+hash_len = 5
+"#,
+    )
+    .unwrap();
+
+    std::fs::write(
+        crate_dir.join("Cargo.toml"),
+        r#"
+[package]
+name = "my-crate"
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+
+    let config = load_config(&crate_dir).unwrap();
+    // Should get the default hash_len (7), not the workspace one (5)
+    assert_eq!(config.hash_len(), 7);
+    assert!(config.hash_root_path.is_none());
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
 fn test_hash_root_path_changes_hash() {
     let crate1 = fixtures_dir().join("crate1");
 

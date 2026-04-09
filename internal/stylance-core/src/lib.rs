@@ -27,50 +27,87 @@ fn default_hash_len() -> usize {
     7
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub output_file: Option<PathBuf>,
     pub output_dir: Option<PathBuf>,
-    #[serde(default = "default_extensions")]
-    pub extensions: Vec<String>,
-    #[serde(default = "default_folders")]
-    pub folders: Vec<PathBuf>,
+    pub extensions: Option<Vec<String>>,
+    pub folders: Option<Vec<PathBuf>>,
     pub scss_prelude: Option<String>,
-    #[serde(default = "default_hash_len")]
-    pub hash_len: usize,
-    #[serde(default)]
-    pub class_name_pattern: ClassNamePattern,
+    pub hash_len: Option<usize>,
+    pub class_name_pattern: Option<ClassNamePattern>,
     pub hash_root_path: Option<PathBuf>,
+    #[serde(default)]
+    pub workspace: bool,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            output_file: None,
-            output_dir: None,
-            extensions: default_extensions(),
-            folders: default_folders(),
-            scss_prelude: None,
-            hash_len: default_hash_len(),
-            class_name_pattern: Default::default(),
-            hash_root_path: None,
+impl Config {
+    pub fn extensions(&self) -> &[String] {
+        static DEFAULT_EXTENSIONS: std::sync::LazyLock<Vec<String>> =
+            std::sync::LazyLock::new(default_extensions);
+        self.extensions.as_deref().unwrap_or(&DEFAULT_EXTENSIONS)
+    }
+
+    pub fn folders(&self) -> &[PathBuf] {
+        static DEFAULT_FOLDERS: std::sync::LazyLock<Vec<PathBuf>> =
+            std::sync::LazyLock::new(default_folders);
+        self.folders.as_deref().unwrap_or(&DEFAULT_FOLDERS)
+    }
+
+    pub fn hash_len(&self) -> usize {
+        self.hash_len.unwrap_or_else(default_hash_len)
+    }
+
+    pub fn class_name_pattern(&self) -> &ClassNamePattern {
+        static DEFAULT_PATTERN: std::sync::LazyLock<ClassNamePattern> =
+            std::sync::LazyLock::new(ClassNamePattern::default);
+        self.class_name_pattern.as_ref().unwrap_or(&DEFAULT_PATTERN)
+    }
+
+    /// Merge workspace config as defaults under this (crate) config.
+    /// Crate-level explicit values take precedence; returns a new Config.
+    fn merged_with_workspace(self, ws: Config) -> Config {
+        Config {
+            output_file: self.output_file.or(ws.output_file),
+            output_dir: self.output_dir.or(ws.output_dir),
+            extensions: self.extensions.or(ws.extensions),
+            folders: self.folders.or(ws.folders),
+            scss_prelude: self.scss_prelude.or(ws.scss_prelude),
+            hash_len: self.hash_len.or(ws.hash_len),
+            class_name_pattern: self.class_name_pattern.or(ws.class_name_pattern),
+            hash_root_path: self.hash_root_path.or(ws.hash_root_path),
+            workspace: self.workspace,
         }
     }
 }
 
-#[derive(Deserialize)]
-pub struct CargoToml {
+#[derive(Deserialize, Clone)]
+struct CargoToml {
     package: Option<CargoTomlPackage>,
+    workspace: Option<CargoTomlWorkspace>,
 }
 
-#[derive(Deserialize)]
-pub struct CargoTomlPackage {
+#[derive(Deserialize, Clone)]
+struct CargoTomlPackage {
     metadata: Option<CargoTomlPackageMetadata>,
+    /// Explicit workspace path, e.g. `workspace = "../my-workspace"`
+    #[serde(rename = "workspace")]
+    workspace_path: Option<toml::Value>,
 }
 
-#[derive(Deserialize)]
-pub struct CargoTomlPackageMetadata {
+#[derive(Deserialize, Clone)]
+struct CargoTomlPackageMetadata {
+    stylance: Option<Config>,
+}
+
+#[derive(Deserialize, Clone)]
+struct CargoTomlWorkspace {
+    metadata: Option<CargoTomlWorkspaceMetadata>,
+}
+
+#[derive(Deserialize, Clone)]
+struct CargoTomlWorkspaceMetadata {
     stylance: Option<Config>,
 }
 
@@ -85,22 +122,99 @@ pub struct Class {
     pub hashed_name: String,
 }
 
+/// Find the workspace root directory and its parsed CargoToml.
+/// First checks if the crate's own Cargo.toml has `[workspace]` (root crate).
+/// Then checks for an explicit `[package] workspace` field.
+/// Otherwise, walks up the directory tree looking for a Cargo.toml with `[workspace]`.
+fn find_workspace_root<'a>(
+    manifest_dir: &Path,
+    cargo_toml: &'a CargoToml,
+) -> anyhow::Result<(PathBuf, Cow<'a, CargoToml>)> {
+    // The crate's own Cargo.toml has [workspace] — it is the workspace root
+    if cargo_toml.workspace.is_some() {
+        return Ok((manifest_dir.to_path_buf(), Cow::Borrowed(cargo_toml)));
+    }
+
+    // Check for explicit workspace path in [package] workspace = "path"
+    if let Some(CargoTomlPackage {
+        workspace_path: Some(toml::Value::String(workspace_path)),
+        ..
+    }) = &cargo_toml.package
+    {
+        let ws_root = manifest_dir.join(workspace_path);
+        let contents = fs::read_to_string(ws_root.join("Cargo.toml")).with_context(|| {
+            format!(
+                "Failed to read workspace Cargo.toml at {}",
+                ws_root.display()
+            )
+        })?;
+        let parsed: CargoToml = toml::from_str(&contents)?;
+        return Ok((ws_root, Cow::Owned(parsed)));
+    }
+
+    // Walk up looking for a Cargo.toml with [workspace]
+    let mut current = manifest_dir.to_path_buf();
+    loop {
+        if !current.pop() {
+            bail!(
+                "Could not find workspace root for {}. \
+                 No parent Cargo.toml with [workspace] was found.",
+                manifest_dir.display()
+            );
+        }
+
+        let candidate = current.join("Cargo.toml");
+        if candidate.exists() {
+            let contents = fs::read_to_string(&candidate)
+                .with_context(|| format!("Failed to read {}", candidate.display()))?;
+            let parsed: CargoToml = toml::from_str(&contents)?;
+            if parsed.workspace.is_some() {
+                return Ok((current, Cow::Owned(parsed)));
+            }
+        }
+    }
+}
+
 pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     let cargo_toml_contents =
         fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
     let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
 
-    let config = match cargo_toml.package {
-        Some(CargoTomlPackage {
-            metadata:
-                Some(CargoTomlPackageMetadata {
-                    stylance: Some(config),
-                }),
-        }) => config,
-        _ => Config::default(),
-    };
+    let is_workspace = cargo_toml
+        .package
+        .as_ref()
+        .and_then(|p| p.metadata.as_ref())
+        .and_then(|m| m.stylance.as_ref())
+        .is_some_and(|c| c.workspace);
 
-    if config.extensions.iter().any(|e| e.is_empty()) {
+    let mut config = cargo_toml
+        .package
+        .as_ref()
+        .and_then(|p| p.metadata.as_ref())
+        .and_then(|m| m.stylance.clone())
+        .unwrap_or_default();
+
+    if is_workspace {
+        let (workspace_root, ws_cargo_toml) = find_workspace_root(manifest_dir, &cargo_toml)?;
+        let ws_config = ws_cargo_toml
+            .workspace
+            .as_ref()
+            .and_then(|w| w.metadata.as_ref())
+            .and_then(|m| m.stylance.clone());
+        if let Some(mut ws_config) = ws_config {
+            // Absolutize workspace config paths against the workspace root
+            ws_config.hash_root_path = Some(
+                ws_config
+                    .hash_root_path
+                    .map_or_else(|| workspace_root.clone(), |p| workspace_root.join(p)),
+            );
+            ws_config.output_file = ws_config.output_file.map(|p| workspace_root.join(p));
+            ws_config.output_dir = ws_config.output_dir.map(|p| workspace_root.join(p));
+            config = config.merged_with_workspace(ws_config);
+        }
+    }
+
+    if config.extensions().iter().any(|e| e.is_empty()) {
         bail!("Stylance config extensions can't be empty strings");
     }
 
@@ -177,7 +291,7 @@ pub fn load_and_modify_css(
     css_file: &Path,
     config: &Config,
 ) -> anyhow::Result<ModifyCssResult> {
-    let hash_str = make_hash(hash_root, css_file, config.hash_len)?;
+    let hash_str = make_hash(hash_root, css_file, config.hash_len())?;
     let css_file_contents = fs::read_to_string(css_file)?;
 
     let fragments = parse::parse_css(&css_file_contents).map_err(|e| anyhow!("{e}"))?;
@@ -189,7 +303,7 @@ pub fn load_and_modify_css(
         let (span, replace) = match fragment {
             CssFragment::Class(class) => (
                 class,
-                Cow::Owned(config.class_name_pattern.apply(class, &hash_str)),
+                Cow::Owned(config.class_name_pattern().apply(class, &hash_str)),
             ),
             CssFragment::Global(Global { inner, outer }) => (outer, Cow::Borrowed(inner)),
         };
@@ -215,7 +329,7 @@ pub fn get_classes(
     css_file: &Path,
     config: &Config,
 ) -> anyhow::Result<(String, Vec<Class>)> {
-    let hash_str = make_hash(hash_root, css_file, config.hash_len)?;
+    let hash_str = make_hash(hash_root, css_file, config.hash_len())?;
 
     let css_file_contents = fs::read_to_string(css_file)?;
 
@@ -240,7 +354,7 @@ pub fn get_classes(
             .into_iter()
             .map(|class| Class {
                 original_name: class.to_owned(),
-                hashed_name: config.class_name_pattern.apply(class, &hash_str),
+                hashed_name: config.class_name_pattern().apply(class, &hash_str),
             })
             .collect(),
     ))
