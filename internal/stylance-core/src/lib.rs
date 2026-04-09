@@ -27,7 +27,7 @@ fn default_hash_len() -> usize {
     7
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub output_file: Option<PathBuf>,
@@ -123,12 +123,18 @@ pub struct Class {
 }
 
 /// Find the workspace root directory and its parsed CargoToml.
-/// First checks for an explicit `[package] workspace` field.
+/// First checks if the crate's own Cargo.toml has `[workspace]` (root crate).
+/// Then checks for an explicit `[package] workspace` field.
 /// Otherwise, walks up the directory tree looking for a Cargo.toml with `[workspace]`.
 fn find_workspace_root(
     manifest_dir: &Path,
-    cargo_toml: &CargoToml,
+    cargo_toml: CargoToml,
 ) -> anyhow::Result<(PathBuf, CargoToml)> {
+    // The crate's own Cargo.toml has [workspace] — it is the workspace root
+    if cargo_toml.workspace.is_some() {
+        return Ok((manifest_dir.to_path_buf(), cargo_toml));
+    }
+
     // Check for explicit workspace path in [package] workspace = "path"
     if let Some(CargoTomlPackage {
         workspace_path: Some(toml::Value::String(workspace_path)),
@@ -228,24 +234,32 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
         .and_then(|m| m.stylance.as_ref())
         .is_some_and(|c| c.workspace);
 
-    let workspace = if is_workspace {
-        Some(find_workspace_root(manifest_dir, &cargo_toml)?)
-    } else {
-        None
-    };
-
+    // Extract the crate config before passing ownership to find_workspace_root
     let mut config = cargo_toml
         .package
-        .and_then(|p| p.metadata)
-        .and_then(|m| m.stylance)
+        .as_ref()
+        .and_then(|p| p.metadata.as_ref())
+        .and_then(|m| m.stylance.clone())
         .unwrap_or_default();
 
-    if let Some((workspace_root, ws_cargo_toml)) = workspace {
+    if is_workspace {
+        let (workspace_root, ws_cargo_toml) = find_workspace_root(manifest_dir, cargo_toml)?;
         let ws_config = ws_cargo_toml
             .workspace
             .and_then(|w| w.metadata)
             .and_then(|m| m.stylance);
-        if let Some(ws_config) = ws_config {
+        if let Some(mut ws_config) = ws_config {
+            // Absolutize workspace config paths against the workspace root
+            if let Some(p) = ws_config.hash_root_path.take() {
+                ws_config.hash_root_path =
+                    Some(relative_path(manifest_dir, &workspace_root.join(p))?);
+            }
+            if let Some(p) = ws_config.output_file.take() {
+                ws_config.output_file = Some(relative_path(manifest_dir, &workspace_root.join(p))?);
+            }
+            if let Some(p) = ws_config.output_dir.take() {
+                ws_config.output_dir = Some(relative_path(manifest_dir, &workspace_root.join(p))?);
+            }
             config = config.merged_with_workspace(ws_config);
         }
         if config.hash_root_path.is_none() {
