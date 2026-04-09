@@ -82,13 +82,13 @@ impl Config {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct CargoToml {
     package: Option<CargoTomlPackage>,
     workspace: Option<CargoTomlWorkspace>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct CargoTomlPackage {
     metadata: Option<CargoTomlPackageMetadata>,
     /// Explicit workspace path, e.g. `workspace = "../my-workspace"`
@@ -96,17 +96,17 @@ struct CargoTomlPackage {
     workspace_path: Option<toml::Value>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct CargoTomlPackageMetadata {
     stylance: Option<Config>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct CargoTomlWorkspace {
     metadata: Option<CargoTomlWorkspaceMetadata>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct CargoTomlWorkspaceMetadata {
     stylance: Option<Config>,
 }
@@ -126,13 +126,13 @@ pub struct Class {
 /// First checks if the crate's own Cargo.toml has `[workspace]` (root crate).
 /// Then checks for an explicit `[package] workspace` field.
 /// Otherwise, walks up the directory tree looking for a Cargo.toml with `[workspace]`.
-fn find_workspace_root(
+fn find_workspace_root<'a>(
     manifest_dir: &Path,
-    cargo_toml: CargoToml,
-) -> anyhow::Result<(PathBuf, CargoToml)> {
+    cargo_toml: &'a CargoToml,
+) -> anyhow::Result<(PathBuf, Cow<'a, CargoToml>)> {
     // The crate's own Cargo.toml has [workspace] — it is the workspace root
     if cargo_toml.workspace.is_some() {
-        return Ok((manifest_dir.to_path_buf(), cargo_toml));
+        return Ok((manifest_dir.to_path_buf(), Cow::Borrowed(cargo_toml)));
     }
 
     // Check for explicit workspace path in [package] workspace = "path"
@@ -149,7 +149,7 @@ fn find_workspace_root(
             )
         })?;
         let parsed: CargoToml = toml::from_str(&contents)?;
-        return Ok((ws_root, parsed));
+        return Ok((ws_root, Cow::Owned(parsed)));
     }
 
     // Walk up looking for a Cargo.toml with [workspace]
@@ -169,57 +169,10 @@ fn find_workspace_root(
                 .with_context(|| format!("Failed to read {}", candidate.display()))?;
             let parsed: CargoToml = toml::from_str(&contents)?;
             if parsed.workspace.is_some() {
-                return Ok((current, parsed));
+                return Ok((current, Cow::Owned(parsed)));
             }
         }
     }
-}
-
-/// Compute a relative path from `base` to `target` using `..` components.
-fn relative_path(base: &Path, target: &Path) -> anyhow::Result<PathBuf> {
-    let base = normalize_path(base)?;
-    let target = normalize_path(target)?;
-
-    // On Windows, verify both paths are on the same drive
-    #[cfg(target_os = "windows")]
-    {
-        use std::path::Component;
-        let base_prefix = base.components().next();
-        let target_prefix = target.components().next();
-        if let (Some(Component::Prefix(a)), Some(Component::Prefix(b))) =
-            (base_prefix, target_prefix)
-        {
-            if a.kind() != b.kind() {
-                bail!(
-                    "Cannot compute relative path between different drives: {} and {}",
-                    base.display(),
-                    target.display()
-                );
-            }
-        }
-    }
-
-    let mut base_iter = base.components().peekable();
-    let mut target_iter = target.components().peekable();
-
-    // Skip common prefix
-    while let (Some(a), Some(b)) = (base_iter.peek(), target_iter.peek()) {
-        if a == b {
-            base_iter.next();
-            target_iter.next();
-        } else {
-            break;
-        }
-    }
-
-    let mut result = PathBuf::new();
-    for _ in base_iter {
-        result.push("..");
-    }
-    for component in target_iter {
-        result.push(component);
-    }
-    Ok(result)
 }
 
 pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
@@ -234,7 +187,6 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
         .and_then(|m| m.stylance.as_ref())
         .is_some_and(|c| c.workspace);
 
-    // Extract the crate config before passing ownership to find_workspace_root
     let mut config = cargo_toml
         .package
         .as_ref()
@@ -243,27 +195,22 @@ pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
         .unwrap_or_default();
 
     if is_workspace {
-        let (workspace_root, ws_cargo_toml) = find_workspace_root(manifest_dir, cargo_toml)?;
+        let (workspace_root, ws_cargo_toml) = find_workspace_root(manifest_dir, &cargo_toml)?;
         let ws_config = ws_cargo_toml
             .workspace
-            .and_then(|w| w.metadata)
-            .and_then(|m| m.stylance);
+            .as_ref()
+            .and_then(|w| w.metadata.as_ref())
+            .and_then(|m| m.stylance.clone());
         if let Some(mut ws_config) = ws_config {
             // Absolutize workspace config paths against the workspace root
-            if let Some(p) = ws_config.hash_root_path.take() {
-                ws_config.hash_root_path =
-                    Some(relative_path(manifest_dir, &workspace_root.join(p))?);
-            }
-            if let Some(p) = ws_config.output_file.take() {
-                ws_config.output_file = Some(relative_path(manifest_dir, &workspace_root.join(p))?);
-            }
-            if let Some(p) = ws_config.output_dir.take() {
-                ws_config.output_dir = Some(relative_path(manifest_dir, &workspace_root.join(p))?);
-            }
+            ws_config.hash_root_path = Some(
+                ws_config
+                    .hash_root_path
+                    .map_or_else(|| workspace_root.clone(), |p| workspace_root.join(p)),
+            );
+            ws_config.output_file = ws_config.output_file.map(|p| workspace_root.join(p));
+            ws_config.output_dir = ws_config.output_dir.map(|p| workspace_root.join(p));
             config = config.merged_with_workspace(ws_config);
-        }
-        if config.hash_root_path.is_none() {
-            config.hash_root_path = Some(relative_path(manifest_dir, &workspace_root)?);
         }
     }
 
