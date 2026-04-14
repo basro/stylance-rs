@@ -279,6 +279,7 @@ pub fn resolve_hash_root(manifest_dir: &Path, config: &Config) -> PathBuf {
     }
 }
 
+#[derive(Clone)]
 pub struct ModifyCssResult {
     pub path: PathBuf,
     pub normalized_path_str: String,

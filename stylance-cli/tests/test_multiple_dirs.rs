@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use stylance_cli::{run_silent, Config};
+use stylance_cli::{
+    build_crate, build_output_file_content, run_silent, write_output_file, Config, CrateBuilder,
+};
 use stylance_core::load_config;
 
 fn fixtures_dir() -> PathBuf {
@@ -558,4 +560,340 @@ folders = ["nonexistent_folder"]
     }
 
     let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+// ---------------------------------------------------------------------------
+// Shared output_file tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_shared_output_file_concatenates_css() {
+    let crate1 = fixtures_dir().join("crate1");
+    let crate2 = fixtures_dir().join("crate2");
+
+    let tmpdir = std::env::temp_dir().join("stylance_test_shared_output");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    std::fs::create_dir_all(&tmpdir).unwrap();
+
+    let shared_output = tmpdir.join("bundle.css");
+
+    let mut config1 = load_config(&crate1).unwrap();
+    config1.output_file = Some(shared_output.clone());
+
+    let mut config2 = load_config(&crate2).unwrap();
+    config2.output_file = Some(shared_output.clone());
+
+    let results1 = build_crate(&crate1, &config1, |_| {}).unwrap();
+    let results2 = build_crate(&crate2, &config2, |_| {}).unwrap();
+
+    write_output_file(
+        &shared_output,
+        None,
+        &[results1.as_slice(), results2.as_slice()],
+    )
+    .unwrap();
+
+    let content = std::fs::read_to_string(&shared_output).unwrap();
+
+    // Both crates' CSS should be present
+    assert!(
+        content.contains("container-"),
+        "should contain crate1 class"
+    );
+    assert!(content.contains("title-"), "should contain crate1 class");
+    assert!(content.contains("wrapper-"), "should contain crate2 class");
+    assert!(content.contains("header-"), "should contain crate2 class");
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_shared_output_file_preserves_crate_order() {
+    let crate1 = fixtures_dir().join("crate1");
+    let crate2 = fixtures_dir().join("crate2");
+
+    let mut config1 = load_config(&crate1).unwrap();
+    config1.output_file = Some(PathBuf::from("dummy.css"));
+
+    let mut config2 = load_config(&crate2).unwrap();
+    config2.output_file = Some(PathBuf::from("dummy.css"));
+
+    let results1 = build_crate(&crate1, &config1, |_| {}).unwrap();
+    let results2 = build_crate(&crate2, &config2, |_| {}).unwrap();
+
+    // Order: crate1 first, then crate2
+    let content_1_2 = build_output_file_content(
+        Path::new("dummy.css"),
+        None,
+        &[results1.as_slice(), results2.as_slice()],
+    );
+
+    // Order: crate2 first, then crate1
+    let content_2_1 = build_output_file_content(
+        Path::new("dummy.css"),
+        None,
+        &[results2.as_slice(), results1.as_slice()],
+    );
+
+    // Both orderings should contain all classes
+    assert!(content_1_2.contains("container-"));
+    assert!(content_1_2.contains("wrapper-"));
+
+    // But the order of CSS blocks should differ
+    let pos_container_1_2 = content_1_2.find("container-").unwrap();
+    let pos_wrapper_1_2 = content_1_2.find("wrapper-").unwrap();
+    assert!(
+        pos_container_1_2 < pos_wrapper_1_2,
+        "crate1 CSS should come before crate2 CSS"
+    );
+
+    let pos_container_2_1 = content_2_1.find("container-").unwrap();
+    let pos_wrapper_2_1 = content_2_1.find("wrapper-").unwrap();
+    assert!(
+        pos_wrapper_2_1 < pos_container_2_1,
+        "reversed order: crate2 CSS should come before crate1 CSS"
+    );
+}
+
+#[test]
+fn test_shared_output_file_via_cli() {
+    let binary = env!("CARGO_BIN_EXE_stylance");
+    let crate1 = fixtures_dir().join("crate1");
+    let crate2 = fixtures_dir().join("crate2");
+
+    let tmpdir = std::env::temp_dir().join("stylance_test_shared_cli");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    std::fs::create_dir_all(&tmpdir).unwrap();
+
+    let shared_output = tmpdir.join("shared.css");
+
+    let output = std::process::Command::new(binary)
+        .arg(&crate1)
+        .arg(&crate2)
+        .arg("--output-file")
+        .arg(&shared_output)
+        .output()
+        .expect("failed to execute stylance binary");
+
+    assert!(
+        output.status.success(),
+        "stylance with shared --output-file failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(&shared_output).unwrap();
+    assert!(
+        content.contains("container-"),
+        "shared output should contain crate1 CSS"
+    );
+    assert!(
+        content.contains("wrapper-"),
+        "shared output should contain crate2 CSS"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_shared_output_no_longer_errors() {
+    // Previously, two crates sharing output_file would error.
+    // Now it should succeed via concatenation.
+    let binary = env!("CARGO_BIN_EXE_stylance");
+    let crate1 = fixtures_dir().join("crate1");
+    let crate2 = fixtures_dir().join("crate2");
+
+    // Both fixture crates have output_file = "output.css" in their Cargo.toml.
+    // With the old code this would error; now it should concatenate.
+    let output = std::process::Command::new(binary)
+        .arg(&crate1)
+        .arg(&crate2)
+        .output()
+        .expect("failed to execute stylance binary");
+
+    assert!(
+        output.status.success(),
+        "shared output_file should no longer error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// CrateBuilder tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_crate_builder_build_all() {
+    let crate1 = fixtures_dir().join("crate1");
+    let config = load_config(&crate1).unwrap();
+
+    let mut builder = CrateBuilder::new(crate1, config);
+    builder.build_all().unwrap();
+
+    let output = builder.output().unwrap();
+    assert_eq!(output.len(), 1);
+    assert!(output[0].contents.contains("container-"));
+}
+
+#[test]
+fn test_crate_builder_incremental_rebuild() {
+    let tmpdir = std::env::temp_dir().join("stylance_test_incremental");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    std::fs::create_dir_all(tmpdir.join("src")).unwrap();
+
+    std::fs::write(tmpdir.join("src/a.module.css"), ".alpha { color: red; }").unwrap();
+    std::fs::write(tmpdir.join("src/b.module.css"), ".beta { color: blue; }").unwrap();
+
+    let config = Config {
+        output_file: Some(tmpdir.join("out.css")),
+        ..Config::default()
+    };
+
+    let mut builder = CrateBuilder::new(tmpdir.clone(), config);
+    builder.build_all().unwrap();
+
+    let output = builder.output().unwrap();
+    assert_eq!(output.len(), 2);
+
+    // Modify one file
+    std::fs::write(tmpdir.join("src/a.module.css"), ".alpha { color: green; }").unwrap();
+
+    let mut changed = std::collections::HashSet::new();
+    changed.insert(tmpdir.join("src/a.module.css"));
+    builder.rebuild_changed(&changed).unwrap();
+
+    let output = builder.output().unwrap();
+    assert_eq!(output.len(), 2);
+
+    // The changed file should have the new content
+    let alpha_result = output
+        .iter()
+        .find(|r| r.contents.contains("alpha-"))
+        .unwrap();
+    assert!(alpha_result.contents.contains("color: green"));
+
+    // The unchanged file should still be present
+    let beta_result = output
+        .iter()
+        .find(|r| r.contents.contains("beta-"))
+        .unwrap();
+    assert!(beta_result.contents.contains("color: blue"));
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_crate_builder_incremental_delete() {
+    let tmpdir = std::env::temp_dir().join("stylance_test_incr_delete");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    std::fs::create_dir_all(tmpdir.join("src")).unwrap();
+
+    std::fs::write(tmpdir.join("src/a.module.css"), ".alpha { color: red; }").unwrap();
+    std::fs::write(tmpdir.join("src/b.module.css"), ".beta { color: blue; }").unwrap();
+
+    let config = Config::default();
+    let mut builder = CrateBuilder::new(tmpdir.clone(), config);
+    builder.build_all().unwrap();
+    assert_eq!(builder.output().unwrap().len(), 2);
+
+    // Delete one file
+    std::fs::remove_file(tmpdir.join("src/b.module.css")).unwrap();
+
+    let mut changed = std::collections::HashSet::new();
+    changed.insert(tmpdir.join("src/b.module.css"));
+    builder.rebuild_changed(&changed).unwrap();
+
+    let output = builder.output().unwrap();
+    assert_eq!(output.len(), 1);
+    assert!(output[0].contents.contains("alpha-"));
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_crate_builder_incremental_create() {
+    let tmpdir = std::env::temp_dir().join("stylance_test_incr_create");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    std::fs::create_dir_all(tmpdir.join("src")).unwrap();
+
+    std::fs::write(tmpdir.join("src/a.module.css"), ".alpha { color: red; }").unwrap();
+
+    let config = Config::default();
+    let mut builder = CrateBuilder::new(tmpdir.clone(), config);
+    builder.build_all().unwrap();
+    assert_eq!(builder.output().unwrap().len(), 1);
+
+    // Create a new file
+    std::fs::write(tmpdir.join("src/b.module.css"), ".beta { color: blue; }").unwrap();
+
+    let mut changed = std::collections::HashSet::new();
+    changed.insert(tmpdir.join("src/b.module.css"));
+    builder.rebuild_changed(&changed).unwrap();
+
+    let output = builder.output().unwrap();
+    assert_eq!(output.len(), 2);
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_crate_builder_update_config() {
+    let tmpdir = std::env::temp_dir().join("stylance_test_config_update");
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    std::fs::create_dir_all(tmpdir.join("src")).unwrap();
+
+    std::fs::write(tmpdir.join("src/a.module.css"), ".alpha { color: red; }").unwrap();
+
+    let config = Config {
+        hash_len: Some(5),
+        ..Config::default()
+    };
+    let mut builder = CrateBuilder::new(tmpdir.clone(), config);
+    builder.build_all().unwrap();
+
+    let output_before = builder.output().unwrap();
+    let hash_before = &output_before[0].hash;
+    assert_eq!(hash_before.len(), 5);
+
+    // Update config with different hash_len
+    let new_config = Config {
+        hash_len: Some(10),
+        ..Config::default()
+    };
+    builder.update_config(new_config).unwrap();
+
+    let output_after = builder.output().unwrap();
+    let hash_after = &output_after[0].hash;
+    assert_eq!(hash_after.len(), 10);
+
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_crate_builder_from_results() {
+    let crate1 = fixtures_dir().join("crate1");
+    let config = load_config(&crate1).unwrap();
+
+    let results = build_crate(&crate1, &config, |_| {}).unwrap();
+    let builder = CrateBuilder::from_results(crate1, config, results);
+
+    let output = builder.output().unwrap();
+    assert_eq!(output.len(), 1);
+    assert!(output[0].contents.contains("container-"));
+}
+
+// ---------------------------------------------------------------------------
+// Content-aware output writing test
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_content_aware_build_output() {
+    let crate1 = fixtures_dir().join("crate1");
+    let config = load_config(&crate1).unwrap();
+    let results = build_crate(&crate1, &config, |_| {}).unwrap();
+
+    let content1 = build_output_file_content(Path::new("output.css"), None, &[results.as_slice()]);
+    let content2 = build_output_file_content(Path::new("output.css"), None, &[results.as_slice()]);
+
+    // Same inputs should produce identical content
+    assert_eq!(content1, content2);
 }
