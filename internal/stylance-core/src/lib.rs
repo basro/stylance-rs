@@ -82,13 +82,13 @@ impl Config {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 struct CargoToml {
     package: Option<CargoTomlPackage>,
     workspace: Option<CargoTomlWorkspace>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 struct CargoTomlPackage {
     metadata: Option<CargoTomlPackageMetadata>,
     /// Explicit workspace path, e.g. `workspace = "../my-workspace"`
@@ -96,17 +96,17 @@ struct CargoTomlPackage {
     workspace_path: Option<toml::Value>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 struct CargoTomlPackageMetadata {
     stylance: Option<Config>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 struct CargoTomlWorkspace {
     metadata: Option<CargoTomlWorkspaceMetadata>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
 struct CargoTomlWorkspaceMetadata {
     stylance: Option<Config>,
 }
@@ -126,13 +126,13 @@ pub struct Class {
 /// First checks if the crate's own Cargo.toml has `[workspace]` (root crate).
 /// Then checks for an explicit `[package] workspace` field.
 /// Otherwise, walks up the directory tree looking for a Cargo.toml with `[workspace]`.
-fn find_workspace_root<'a>(
+fn find_workspace_root(
     manifest_dir: &Path,
-    cargo_toml: &'a CargoToml,
-) -> anyhow::Result<(PathBuf, Cow<'a, CargoToml>)> {
+    cargo_toml: CargoToml,
+) -> anyhow::Result<(PathBuf, CargoToml)> {
     // The crate's own Cargo.toml has [workspace] — it is the workspace root
     if cargo_toml.workspace.is_some() {
-        return Ok((manifest_dir.to_path_buf(), Cow::Borrowed(cargo_toml)));
+        return Ok((manifest_dir.to_path_buf(), cargo_toml));
     }
 
     // Check for explicit workspace path in [package] workspace = "path"
@@ -149,7 +149,7 @@ fn find_workspace_root<'a>(
             )
         })?;
         let parsed: CargoToml = toml::from_str(&contents)?;
-        return Ok((ws_root, Cow::Owned(parsed)));
+        return Ok((ws_root, parsed));
     }
 
     // Walk up looking for a Cargo.toml with [workspace]
@@ -169,7 +169,7 @@ fn find_workspace_root<'a>(
                 .with_context(|| format!("Failed to read {}", candidate.display()))?;
             let parsed: CargoToml = toml::from_str(&contents)?;
             if parsed.workspace.is_some() {
-                return Ok((current, Cow::Owned(parsed)));
+                return Ok((current, parsed));
             }
         }
     }
@@ -178,29 +178,22 @@ fn find_workspace_root<'a>(
 pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
     let cargo_toml_contents =
         fs::read_to_string(manifest_dir.join("Cargo.toml")).context("Failed to read Cargo.toml")?;
-    let cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
-
-    let is_workspace = cargo_toml
-        .package
-        .as_ref()
-        .and_then(|p| p.metadata.as_ref())
-        .and_then(|m| m.stylance.as_ref())
-        .is_some_and(|c| c.workspace);
+    let mut cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
 
     let mut config = cargo_toml
         .package
-        .as_ref()
-        .and_then(|p| p.metadata.as_ref())
-        .and_then(|m| m.stylance.clone())
+        .as_mut()
+        .and_then(|p| p.metadata.as_mut())
+        .and_then(|m| m.stylance.take())
         .unwrap_or_default();
 
-    if is_workspace {
-        let (workspace_root, ws_cargo_toml) = find_workspace_root(manifest_dir, &cargo_toml)?;
+    if config.workspace {
+        let (workspace_root, mut ws_cargo_toml) = find_workspace_root(manifest_dir, cargo_toml)?;
         let ws_config = ws_cargo_toml
             .workspace
-            .as_ref()
-            .and_then(|w| w.metadata.as_ref())
-            .and_then(|m| m.stylance.clone());
+            .as_mut()
+            .and_then(|w| w.metadata.as_mut())
+            .and_then(|m| m.stylance.take());
         if let Some(mut ws_config) = ws_config {
             // Absolutize workspace config paths against the workspace root
             ws_config.hash_root_path = Some(
