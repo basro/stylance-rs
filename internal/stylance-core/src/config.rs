@@ -37,7 +37,7 @@ pub struct PartialConfig {
 }
 
 /**
- * Represents the stylance config of applying to a single crate.
+ * Represents the stylance config applying to a single crate.
  * Unlike PartialConfig, the paths in this struct should be interpreted
  * as relative to CWD instead of relative to a manifest dir.
  */
