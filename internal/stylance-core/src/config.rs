@@ -84,7 +84,7 @@ impl Config {
         Self::from_partials(manifest_dir, config, workspace)
     }
 
-    fn from_partials(
+    pub fn from_partials(
         manifest_dir: PathBuf,
         config: PartialConfig,
         workspace: Option<(PathBuf, PartialConfig)>,
