@@ -37,10 +37,13 @@ pub struct PartialConfig {
 }
 
 /**
- * Represents the stylance config of applying to a single crate
- * Paths should be already resolved to be independent of the manifest_dir
+ * Represents the stylance config of applying to a single crate.
+ * Unlike PartialConfig, the paths in this struct should be interpreted
+ * as relative to CWD instead of relative to a manifest dir.
  */
 pub struct Config {
+    pub manifest_dir: PathBuf,
+    pub workspace_dir: Option<PathBuf>,
     pub output_file: Option<PathBuf>,
     pub output_dir: Option<PathBuf>,
     pub extensions: Vec<String>,
@@ -49,7 +52,6 @@ pub struct Config {
     pub hash_len: usize,
     pub class_name_pattern: ClassNamePattern,
     pub hash_root_path: PathBuf,
-    pub workspace: bool,
 }
 
 impl Config {
@@ -65,7 +67,7 @@ impl Config {
             .and_then(|m| m.stylance.take())
             .unwrap_or_default();
 
-        let ws_config = if config.workspace {
+        let (ws_config, workspace_dir) = if config.workspace {
             let (workspace_root, mut ws_cargo_toml) =
                 find_workspace_root(manifest_dir, cargo_toml)?;
             let mut ws_config = ws_cargo_toml
@@ -84,9 +86,9 @@ impl Config {
             ws_config.output_file = ws_config.output_file.map(|p| workspace_root.join(p));
             ws_config.output_dir = ws_config.output_dir.map(|p| workspace_root.join(p));
 
-            ws_config
+            (ws_config, Some(workspace_root))
         } else {
-            PartialConfig::default()
+            (PartialConfig::default(), None)
         };
 
         // TODO: Resolve all paths
@@ -115,7 +117,8 @@ impl Config {
                 .hash_root_path
                 .or(ws_config.hash_root_path)
                 .unwrap_or_else(|| manifest_dir.to_path_buf()),
-            workspace: config.workspace,
+            workspace_dir,
+            manifest_dir: manifest_dir.to_path_buf(),
         };
 
         if config.extensions.iter().any(|e| e.is_empty()) {
