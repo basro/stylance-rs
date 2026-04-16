@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut all_configs = Vec::new();
     for manifest_dir in &cli.manifest_dirs {
-        let params = make_run_params(&cli, manifest_dir).await?;
+        let params = load_config(&cli, manifest_dir).await?;
         all_configs.push(params);
     }
 
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Config> {
+async fn load_config(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Config> {
     let mut config = spawn_blocking({
         let manifest_dir = manifest_dir.to_path_buf();
         move || Config::load(manifest_dir)
@@ -191,60 +191,30 @@ fn watch_folders(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<Pa
     Ok(events_rx)
 }
 
-async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> {
-    s.next().await;
+async fn debounced_next<T>(s: &mut (impl Stream<Item = T> + Unpin)) -> Option<T> {
+    let mut v = s.next().await;
 
     loop {
         let result = tokio::time::timeout(Duration::from_millis(50), s.next()).await;
         match result {
-            Ok(Some(_)) => {}
-            Ok(None) => return None,
-            Err(_) => return Some(()),
+            Ok(Some(new)) => {
+                v = Some(new);
+            }
+            Ok(None) => return v,
+            Err(_) => return v,
         }
     }
 }
 
-/// Watch a single manifest dir independently. Each crate gets its own
-/// watcher, config reload, and run loop — a change in one crate only
-/// triggers a rebuild for that crate.
+/// Watch a single manifest dir.
 async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
-    let manifest_dir = config.manifest_dir.clone();
-
-    // Watch Cargo.toml to update the current config.
-    let mut watched_files = vec![manifest_dir.join("Cargo.toml")];
-
-    if let Some(workspace_dir) = &config.workspace_dir {
-        watched_files.push(workspace_dir.join("Cargo.toml"))
-    }
-
-    let (config_tx, mut config) = tokio::sync::watch::channel(Arc::new(config));
-
-    let cargo_toml_events = watch_files(&watched_files)?;
-    let manifest_dir_clone = manifest_dir.clone();
-    tokio::spawn(async move {
-        let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
-        while debounced_next(&mut stream).await.is_some() {
-            match make_run_params(&cli, &manifest_dir_clone).await {
-                Ok(new_config) => {
-                    if config_tx.send(Arc::new(new_config)).is_err() {
-                        return;
-                    };
-                }
-                Err(e) => {
-                    eprintln!("{e}");
-                }
-            }
-        }
-    });
-
     // Wait for run_events to run the stylance process.
-    let (run_events_tx, run_events) = mpsc::channel(1);
+    let (run_events_tx, run_events) = mpsc::channel::<Arc<Config>>(1);
     tokio::spawn({
-        let config = config.clone();
         async move {
             let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
-            while (debounced_next(&mut stream).await).is_some() {
-                let config = config.borrow().clone();
+            while let Some(config) = debounced_next(&mut stream).await {
+                let config = config.clone();
                 if let Ok(Err(e)) = spawn_blocking(move || run(&config)).await {
                     eprintln!("{e}");
                 }
@@ -252,19 +222,31 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
         }
     });
 
+    let mut config = Arc::new(config);
+
     loop {
+        // Watch Cargo.toml to update the current config.
+        let mut watched_files = vec![config.manifest_dir.join("Cargo.toml")];
+
+        // Also watch workspace Cargo.toml if the config inherits from it.
+        if let Some(workspace_dir) = &config.workspace_dir {
+            watched_files.push(workspace_dir.join("Cargo.toml"))
+        }
+
+        let mut cargo_toml_events = watch_files(&watched_files)?;
+
         // Watch the folders from the current config
-        let mut events = watch_folders(&config.borrow().folders)?;
+        let mut folder_events = watch_folders(&config.folders)?;
 
         // With the events from the watched folder trigger run_events if they match the extensions of the config.
         let watch_folders = {
-            let config = config.borrow().clone();
             let run_events_tx = run_events_tx.clone();
+            let config = config.clone();
             async move {
-                while let Some(path) = events.recv().await {
+                while let Some(path) = folder_events.recv().await {
                     let str_path = path.to_string_lossy();
                     if config.extensions.iter().any(|ext| str_path.ends_with(ext)) {
-                        let _ = run_events_tx.try_send(());
+                        let _ = run_events_tx.try_send(config);
                         break;
                     }
                 }
@@ -274,9 +256,21 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
         // Run until the config has changed
         tokio::select! {
             _ = watch_folders => {},
-            _ = config.changed() => {
-                let _ = run_events_tx.try_send(()); // Config changed so lets trigger a run
-            },
+            _ = cargo_toml_events.recv() => {},
         }
+
+        // The cargo_toml_watcher triggered so wait a bit and reload the config.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        match load_config(&cli, &config.manifest_dir).await {
+            Ok(new_config) => {
+                config = Arc::new(new_config);
+            }
+            Err(e) => {
+                eprintln!("{e}")
+            }
+        }
+
+        run_events_tx.try_send(config.clone())?;
     }
 }
