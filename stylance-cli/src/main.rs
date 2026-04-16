@@ -43,33 +43,28 @@ struct Cli {
     watch: bool,
 }
 
-struct RunParams {
-    manifest_dir: PathBuf,
-    config: Config,
-}
-
-fn check_output_collisions(all_params: &[RunParams]) -> anyhow::Result<()> {
+fn check_output_collisions(all_configs: &[Config]) -> anyhow::Result<()> {
     let mut seen_files: HashMap<PathBuf, &Path> = HashMap::new();
     let mut seen_dirs: HashMap<PathBuf, &Path> = HashMap::new();
 
-    for params in all_params {
-        if let Some(output_file) = &params.config.output_file {
-            if let Some(prev) = seen_files.insert(output_file.clone(), &params.manifest_dir) {
+    for config in all_configs {
+        if let Some(output_file) = &config.output_file {
+            if let Some(prev) = seen_files.insert(output_file.clone(), &config.manifest_dir) {
                 bail!(
                     "Multiple crates share the same output_file: {}\n  - {}\n  - {}",
                     output_file.display(),
                     prev.display(),
-                    params.manifest_dir.display(),
+                    config.manifest_dir.display(),
                 );
             }
         }
-        if let Some(output_dir) = &params.config.output_dir {
-            if let Some(prev) = seen_dirs.insert(output_dir.clone(), &params.manifest_dir) {
+        if let Some(output_dir) = &config.output_dir {
+            if let Some(prev) = seen_dirs.insert(output_dir.clone(), &config.manifest_dir) {
                 bail!(
                     "Multiple crates share the same output_dir: {}\n  - {}\n  - {}",
                     output_dir.display(),
                     prev.display(),
-                    params.manifest_dir.display(),
+                    config.manifest_dir.display(),
                 );
             }
         }
@@ -82,16 +77,16 @@ fn check_output_collisions(all_params: &[RunParams]) -> anyhow::Result<()> {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let mut all_params = Vec::new();
+    let mut all_configs = Vec::new();
     for manifest_dir in &cli.manifest_dirs {
         let params = make_run_params(&cli, manifest_dir).await?;
-        all_params.push(params);
+        all_configs.push(params);
     }
 
-    check_output_collisions(&all_params)?;
+    check_output_collisions(&all_configs)?;
 
-    for params in &all_params {
-        run(&params.config)?;
+    for config in &all_configs {
+        run(config)?;
     }
 
     if cli.watch {
@@ -100,9 +95,9 @@ async fn main() -> anyhow::Result<()> {
         // Spawn one independent watch task per manifest dir, as each crate
         // has its own config, folders, and output.
         let mut set = JoinSet::new();
-        for params in all_params {
+        for config in all_configs {
             let cli = cli.clone();
-            set.spawn(watch_single(cli, params));
+            set.spawn(watch_single(cli, config));
         }
 
         // If any watcher ends (only happens on error), abort the rest and exit.
@@ -115,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunParams> {
+async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Config> {
     let mut config = spawn_blocking({
         let manifest_dir = manifest_dir.to_path_buf();
         move || Config::load(manifest_dir)
@@ -129,10 +124,7 @@ async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunPa
         config.folders = cli.folder.iter().map(|p| manifest_dir.join(p)).collect();
     }
 
-    Ok(RunParams {
-        manifest_dir: manifest_dir.to_path_buf(),
-        config,
-    })
+    Ok(config)
 }
 
 fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
@@ -213,9 +205,9 @@ async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> 
 /// Watch a single manifest dir independently. Each crate gets its own
 /// watcher, config reload, and run loop — a change in one crate only
 /// triggers a rebuild for that crate.
-async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()> {
-    let manifest_dir = run_params.manifest_dir.clone();
-    let (run_params_tx, mut run_params) = tokio::sync::watch::channel(Arc::new(run_params));
+async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
+    let manifest_dir = config.manifest_dir.clone();
+    let (config_tx, mut config) = tokio::sync::watch::channel(Arc::new(config));
 
     // Watch Cargo.toml to update the current run_params.
     let cargo_toml_events = watch_file(&manifest_dir.join("Cargo.toml").canonicalize()?)?;
@@ -224,8 +216,8 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
         let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
         while debounced_next(&mut stream).await.is_some() {
             match make_run_params(&cli, &manifest_dir_clone).await {
-                Ok(new_params) => {
-                    if run_params_tx.send(Arc::new(new_params)).is_err() {
+                Ok(new_config) => {
+                    if config_tx.send(Arc::new(new_config)).is_err() {
                         return;
                     };
                 }
@@ -239,12 +231,12 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
     // Wait for run_events to run the stylance process.
     let (run_events_tx, run_events) = mpsc::channel(1);
     tokio::spawn({
-        let run_params = run_params.clone();
+        let config = config.clone();
         async move {
             let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
             while (debounced_next(&mut stream).await).is_some() {
-                let run_params = run_params.borrow().clone();
-                if let Ok(Err(e)) = spawn_blocking(move || run(&run_params.config)).await {
+                let run_params = config.borrow().clone();
+                if let Ok(Err(e)) = spawn_blocking(move || run(&run_params)).await {
                     eprintln!("{e}");
                 }
             }
@@ -253,21 +245,16 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
 
     loop {
         // Watch the folders from the current run_params
-        let mut events = watch_folders(&run_params.borrow().config.folders)?;
+        let mut events = watch_folders(&config.borrow().folders)?;
 
         // With the events from the watched folder trigger run_events if they match the extensions of the config.
         let watch_folders = {
-            let run_params = run_params.borrow().clone();
+            let config = config.borrow().clone();
             let run_events_tx = run_events_tx.clone();
             async move {
                 while let Some(path) = events.recv().await {
                     let str_path = path.to_string_lossy();
-                    if run_params
-                        .config
-                        .extensions
-                        .iter()
-                        .any(|ext| str_path.ends_with(ext))
-                    {
+                    if config.extensions.iter().any(|ext| str_path.ends_with(ext)) {
                         let _ = run_events_tx.try_send(());
                         break;
                     }
@@ -278,7 +265,7 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
         // Run until the config has changed
         tokio::select! {
             _ = watch_folders => {},
-            _ = run_params.changed() => {
+            _ = config.changed() => {
                 let _ = run_events_tx.try_send(()); // Config changed so lets trigger a run
             },
         }
