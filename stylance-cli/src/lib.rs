@@ -155,54 +155,59 @@ pub fn run_silent(
     Ok(())
 }
 
-// #[cfg(test)]
-// mod tests {
-//     #[cfg(unix)]
-//     #[test]
-//     fn test_symlinked_folder() {
-//         use super::*;
-//         use stylance_core::Config;
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn test_symlinked_folder() {
+        use super::*;
+        use stylance_core::Config;
+        use stylance_core::PartialConfig;
 
-//         use std::os::unix::fs::symlink;
+        use std::os::unix::fs::symlink;
 
-//         let base = std::env::temp_dir().join(format!("stylance_test_{}", std::process::id()));
-//         let manifest_dir = base.join("my_app");
-//         let external_dir = base.join("external");
+        let base = std::env::temp_dir().join(format!("stylance_test_{}", std::process::id()));
+        let manifest_dir = base.join("my_app");
+        let external_dir = base.join("external");
 
-//         fs::create_dir_all(&manifest_dir).unwrap();
-//         fs::create_dir_all(&external_dir).unwrap();
+        fs::create_dir_all(&manifest_dir).unwrap();
+        fs::create_dir_all(&external_dir).unwrap();
 
-//         fs::write(
-//             external_dir.join("style.module.css"),
-//             ".myClass { color: red; }",
-//         )
-//         .unwrap();
+        fs::write(
+            external_dir.join("style.module.css"),
+            ".myClass { color: red; }",
+        )
+        .unwrap();
 
-//         // Create symlink: my_app/views -> ../external
-//         symlink(&external_dir, manifest_dir.join("views")).unwrap();
+        // Create symlink: my_app/views -> ../external
+        symlink(&external_dir, manifest_dir.join("views")).unwrap();
 
-//         let config = Config {
-//             output_file: Some(base.join("out.css")),
-//             folders: vec![std::path::PathBuf::from("./views/")],
-//             ..Config::default()
-//         };
+        let config = Config::from_partials(
+            manifest_dir,
+            PartialConfig {
+                output_file: Some(base.join("out.css")),
+                folders: Some(vec![std::path::PathBuf::from("./views/")]),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
 
-//         run_silent(&manifest_dir, &config, |_| {})
-//             .expect("run_silent should succeed with symlinked folder");
+        run_silent(&config, |_| {}).expect("run_silent should succeed with symlinked folder");
 
-//         let output = fs::read_to_string(base.join("out.css")).expect("output file should exist");
+        let output = fs::read_to_string(base.join("out.css")).expect("output file should exist");
 
-//         fs::remove_dir_all(&base).unwrap();
+        fs::remove_dir_all(&base).unwrap();
 
-//         // Class name should be scoped: .myClass-<hash>
-//         assert!(
-//             output.contains(".myClass-"),
-//             "output should contain scoped class name, got: {output}"
-//         );
-//         // CSS body should be preserved
-//         assert!(
-//             output.contains("color: red"),
-//             "output should contain original CSS body, got: {output}"
-//         );
-//     }
-// }
+        // Class name should be scoped: .myClass-<hash>
+        assert!(
+            output.contains(".myClass-"),
+            "output should contain scoped class name, got: {output}"
+        );
+        // CSS body should be preserved
+        assert!(
+            output.contains("color: red"),
+            "output should contain original CSS body, got: {output}"
+        );
+    }
+}
