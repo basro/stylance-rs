@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use stylance_cli::{run_silent, Config};
+use stylance_core::PartialConfig;
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -409,67 +410,87 @@ fn test_hash_root_path_changes_hash() {
     let _ = std::fs::remove_dir_all(&tmpdir);
 }
 
-// #[test]
-// fn test_hash_root_path_makes_same_filename_unique() {
-//     // Simulate two crates with the same relative CSS file path (src/style.module.css)
-//     // When both use hash_root_path pointing to a common root, they should get different hashes.
-//     let tmpdir = std::env::temp_dir().join("stylance_test_hash_root_unique");
-//     let _ = std::fs::remove_dir_all(&tmpdir);
+#[test]
+fn test_hash_root_path_makes_same_filename_unique() {
+    // Simulate two crates with the same relative CSS file path (src/style.module.css)
+    // When both use hash_root_path pointing to a common root, they should get different hashes.
+    let tmpdir = std::env::temp_dir().join("stylance_test_hash_root_unique");
+    let _ = std::fs::remove_dir_all(&tmpdir);
 
-//     let crate_a = tmpdir.join("crate_a");
-//     let crate_b = tmpdir.join("crate_b");
-//     std::fs::create_dir_all(crate_a.join("src")).unwrap();
-//     std::fs::create_dir_all(crate_b.join("src")).unwrap();
+    let crate_a = tmpdir.join("crate_a");
+    let crate_b = tmpdir.join("crate_b");
+    std::fs::create_dir_all(crate_a.join("src")).unwrap();
+    std::fs::create_dir_all(crate_b.join("src")).unwrap();
 
-//     // Same CSS content and same relative path in both crates
-//     let css_content = ".btn { color: red; }";
-//     std::fs::write(crate_a.join("src/style.module.css"), css_content).unwrap();
-//     std::fs::write(crate_b.join("src/style.module.css"), css_content).unwrap();
+    // Same CSS content and same relative path in both crates
+    let css_content = ".btn { color: red; }";
+    std::fs::write(crate_a.join("src/style.module.css"), css_content).unwrap();
+    std::fs::write(crate_b.join("src/style.module.css"), css_content).unwrap();
 
-//     // Without hash_root_path: both crates produce the same hash
-//     let config_no_root = Config {
-//         output_file: Some(tmpdir.join("a_default.css")),
-//         ..Config::default()
-//     };
-//     run_silent(&crate_a, &config_no_root, |_| {}).unwrap();
-//     let out_a_default = std::fs::read_to_string(tmpdir.join("a_default.css")).unwrap();
+    // Without hash_root_path: both crates produce the same hash
+    let config_no_root = Config::from_partials(
+        crate_a.clone(),
+        PartialConfig {
+            output_file: Some(tmpdir.join("a_default.css")),
+            ..PartialConfig::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_no_root, |_| {}).unwrap();
+    let out_a_default = std::fs::read_to_string(tmpdir.join("a_default.css")).unwrap();
 
-//     let config_no_root_b = Config {
-//         output_file: Some(tmpdir.join("b_default.css")),
-//         ..Config::default()
-//     };
-//     run_silent(&crate_b, &config_no_root_b, |_| {}).unwrap();
-//     let out_b_default = std::fs::read_to_string(tmpdir.join("b_default.css")).unwrap();
+    let config_no_root_b = Config::from_partials(
+        crate_b.clone(),
+        PartialConfig {
+            output_file: Some(tmpdir.join("b_default.css")),
+            ..PartialConfig::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_no_root_b, |_| {}).unwrap();
+    let out_b_default = std::fs::read_to_string(tmpdir.join("b_default.css")).unwrap();
 
-//     assert_eq!(
-//         out_a_default, out_b_default,
-//         "without hash_root_path, same relative paths should produce same hashes"
-//     );
+    assert_eq!(
+        out_a_default, out_b_default,
+        "without hash_root_path, same relative paths should produce same hashes"
+    );
 
-//     // With hash_root_path pointing to the common parent: hashes should differ
-//     let config_a = Config {
-//         output_file: Some(tmpdir.join("a_rooted.css")),
-//         hash_root_path: Some(PathBuf::from("../")),
-//         ..Config::default()
-//     };
-//     run_silent(&crate_a, &config_a, |_| {}).unwrap();
-//     let out_a_rooted = std::fs::read_to_string(tmpdir.join("a_rooted.css")).unwrap();
+    // With hash_root_path pointing to the common parent: hashes should differ
+    let config_a = Config::from_partials(
+        crate_a,
+        PartialConfig {
+            output_file: Some(tmpdir.join("a_rooted.css")),
+            hash_root_path: Some(PathBuf::from("../")),
+            ..Default::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_a, |_| {}).unwrap();
+    let out_a_rooted = std::fs::read_to_string(tmpdir.join("a_rooted.css")).unwrap();
 
-//     let config_b = Config {
-//         output_file: Some(tmpdir.join("b_rooted.css")),
-//         hash_root_path: Some(PathBuf::from("../")),
-//         ..Config::default()
-//     };
-//     run_silent(&crate_b, &config_b, |_| {}).unwrap();
-//     let out_b_rooted = std::fs::read_to_string(tmpdir.join("b_rooted.css")).unwrap();
+    let config_b = Config::from_partials(
+        crate_b,
+        PartialConfig {
+            output_file: Some(tmpdir.join("b_rooted.css")),
+            hash_root_path: Some(PathBuf::from("../")),
+            ..Default::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_b, |_| {}).unwrap();
+    let out_b_rooted = std::fs::read_to_string(tmpdir.join("b_rooted.css")).unwrap();
 
-//     assert_ne!(
-//         out_a_rooted, out_b_rooted,
-//         "with hash_root_path to common parent, different crates should produce different hashes"
-//     );
+    assert_ne!(
+        out_a_rooted, out_b_rooted,
+        "with hash_root_path to common parent, different crates should produce different hashes"
+    );
 
-//     let _ = std::fs::remove_dir_all(&tmpdir);
-// }
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
 
 #[test]
 fn test_watch_produces_output_before_watching() {
