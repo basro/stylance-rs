@@ -23,7 +23,7 @@ pub fn run_silent(
     let mut modified_css_files = Vec::new();
 
     for folder in config.folders.iter() {
-        for (entry, meta) in WalkDir::new(config.manifest_dir.join(folder))
+        for (entry, meta) in WalkDir::new(folder)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))

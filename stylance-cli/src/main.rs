@@ -122,18 +122,11 @@ async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunPa
     })
     .await??;
 
-    config.output_file = cli
-        .output_file
-        .clone()
-        .or_else(|| config.output_file.as_ref().map(|p| manifest_dir.join(p)));
-
-    config.output_dir = cli
-        .output_dir
-        .clone()
-        .or_else(|| config.output_dir.as_ref().map(|p| manifest_dir.join(p)));
+    config.output_file = cli.output_file.clone().or(config.output_file);
+    config.output_dir = cli.output_dir.clone().or(config.output_dir);
 
     if !cli.folder.is_empty() {
-        config.folders = cli.folder.clone();
+        config.folders = cli.folder.iter().map(|p| manifest_dir.join(p)).collect();
     }
 
     Ok(RunParams {
@@ -260,15 +253,7 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
 
     loop {
         // Watch the folders from the current run_params
-        let mut events = watch_folders(
-            &run_params
-                .borrow()
-                .config
-                .folders
-                .iter()
-                .map(|f| manifest_dir.join(f))
-                .collect(),
-        )?;
+        let mut events = watch_folders(&run_params.borrow().config.folders)?;
 
         // With the events from the watched folder trigger run_events if they match the extensions of the config.
         let watch_folders = {
