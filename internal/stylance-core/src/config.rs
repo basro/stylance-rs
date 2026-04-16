@@ -105,8 +105,14 @@ impl Config {
         };
 
         let config = Self {
-            output_file: config.output_file.or(ws_config.output_file),
-            output_dir: config.output_dir.or(ws_config.output_dir),
+            output_file: config
+                .output_file
+                .or(ws_config.output_file)
+                .map(|p| manifest_dir.join(p)),
+            output_dir: config
+                .output_dir
+                .or(ws_config.output_dir)
+                .map(|p| manifest_dir.join(p)),
             extensions: config
                 .extensions
                 .or(ws_config.extensions)
@@ -114,7 +120,10 @@ impl Config {
             folders: config
                 .folders
                 .or(ws_config.folders)
-                .unwrap_or_else(default_folders),
+                .unwrap_or_else(default_folders)
+                .into_iter()
+                .map(|p| manifest_dir.join(p))
+                .collect(),
             scss_prelude: config.scss_prelude.or(ws_config.scss_prelude),
             hash_len: config
                 .hash_len
@@ -127,6 +136,7 @@ impl Config {
             hash_root_path: config
                 .hash_root_path
                 .or(ws_config.hash_root_path)
+                .map(|p| manifest_dir.join(p))
                 .unwrap_or_else(|| manifest_dir.to_path_buf()),
             workspace_dir,
             manifest_dir,
