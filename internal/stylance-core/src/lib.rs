@@ -13,7 +13,7 @@ use anyhow::{anyhow, Context};
 use parse::{CssFragment, Global};
 use siphasher::sip::SipHasher13;
 
-pub use crate::config::Config;
+pub use crate::config::{Config, PartialConfig};
 
 pub fn hash_string(input: &str) -> u64 {
     let mut hasher = SipHasher13::new();
