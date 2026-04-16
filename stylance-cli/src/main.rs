@@ -127,7 +127,7 @@ async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Confi
     Ok(config)
 }
 
-fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
+fn watch_files(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
@@ -145,7 +145,9 @@ fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
         }
     })?;
 
-    watcher.watch(path, RecursiveMode::NonRecursive)?;
+    for path in paths {
+        watcher.watch(path, RecursiveMode::NonRecursive)?;
+    }
 
     tokio::spawn(async move {
         events_tx.closed().await;
@@ -155,7 +157,7 @@ fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
     Ok(events_rx)
 }
 
-fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver<PathBuf>> {
+fn watch_folders(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<PathBuf>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
@@ -210,7 +212,13 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
     let (config_tx, mut config) = tokio::sync::watch::channel(Arc::new(config));
 
     // Watch Cargo.toml to update the current run_params.
-    let cargo_toml_events = watch_file(&manifest_dir.join("Cargo.toml").canonicalize()?)?;
+    let mut watched_files = vec![manifest_dir.join("Cargo.toml")];
+
+    if let Some(workspace_dir) = &config.borrow().workspace_dir {
+        watched_files.push(workspace_dir.join("Cargo.toml"))
+    }
+
+    let cargo_toml_events = watch_files(&watched_files)?;
     let manifest_dir_clone = manifest_dir.clone();
     tokio::spawn(async move {
         let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
