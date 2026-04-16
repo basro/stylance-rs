@@ -55,7 +55,7 @@ fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<Strin
 
     let relative_path_str: String = subpath
         .strip_prefix(base)
-        .context("css file should be inside manifest_dir")?
+        .context("css file should be inside the hash root path")?
         .to_string_lossy()
         .into();
 
