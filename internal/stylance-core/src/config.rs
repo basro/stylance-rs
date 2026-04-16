@@ -55,7 +55,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(manifest_dir: &Path) -> anyhow::Result<Self> {
+    pub fn load(manifest_dir: PathBuf) -> anyhow::Result<Self> {
         let cargo_toml_contents = fs::read_to_string(manifest_dir.join("Cargo.toml"))
             .context("Failed to read Cargo.toml")?;
         let mut cargo_toml: CargoToml = toml::from_str(&cargo_toml_contents)?;
@@ -67,31 +67,42 @@ impl Config {
             .and_then(|m| m.stylance.take())
             .unwrap_or_default();
 
-        let (ws_config, workspace_dir) = if config.workspace {
+        let workspace = if config.workspace {
             let (workspace_root, mut ws_cargo_toml) =
-                find_workspace_root(manifest_dir, cargo_toml)?;
-            let mut ws_config = ws_cargo_toml
+                find_workspace_root(&manifest_dir, cargo_toml)?;
+            let ws_config = ws_cargo_toml
                 .workspace
                 .as_mut()
                 .and_then(|w| w.metadata.as_mut())
                 .and_then(|m| m.stylance.take())
                 .unwrap_or_default();
-
-            // Absolutize workspace config paths against the workspace root
-            ws_config.hash_root_path = Some(
-                ws_config
-                    .hash_root_path
-                    .map_or_else(|| workspace_root.clone(), |p| workspace_root.join(p)),
-            );
-            ws_config.output_file = ws_config.output_file.map(|p| workspace_root.join(p));
-            ws_config.output_dir = ws_config.output_dir.map(|p| workspace_root.join(p));
-
-            (ws_config, Some(workspace_root))
+            Some((workspace_root, ws_config))
         } else {
-            (PartialConfig::default(), None)
+            None
         };
 
-        // TODO: Resolve all paths
+        Self::from_partials(manifest_dir, config, workspace)
+    }
+
+    fn from_partials(
+        manifest_dir: PathBuf,
+        config: PartialConfig,
+        workspace: Option<(PathBuf, PartialConfig)>,
+    ) -> anyhow::Result<Self> {
+        let (workspace_dir, ws_config) = match workspace {
+            Some((workspace_dir, mut ws_config)) => {
+                // Absolutize workspace config paths against the workspace root
+                ws_config.hash_root_path = Some(
+                    ws_config
+                        .hash_root_path
+                        .map_or_else(|| workspace_dir.clone(), |p| workspace_dir.join(p)),
+                );
+                ws_config.output_file = ws_config.output_file.map(|p| workspace_dir.join(p));
+                ws_config.output_dir = ws_config.output_dir.map(|p| workspace_dir.join(p));
+                (Some(workspace_dir), ws_config)
+            }
+            None => (None, PartialConfig::default()),
+        };
 
         let config = Self {
             output_file: config.output_file.or(ws_config.output_file),
@@ -118,7 +129,7 @@ impl Config {
                 .or(ws_config.hash_root_path)
                 .unwrap_or_else(|| manifest_dir.to_path_buf()),
             workspace_dir,
-            manifest_dir: manifest_dir.to_path_buf(),
+            manifest_dir,
         };
 
         if config.extensions.iter().any(|e| e.is_empty()) {

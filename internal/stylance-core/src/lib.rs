@@ -26,10 +26,6 @@ pub struct Class {
     pub hashed_name: String,
 }
 
-pub fn load_config(manifest_dir: &Path) -> anyhow::Result<Config> {
-    Config::load(manifest_dir)
-}
-
 /// Normalize a path by resolving `.` and `..` components and making it
 /// absolute, without following symlinks. This preserves logical paths through
 /// symlinked directories.

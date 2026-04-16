@@ -11,22 +11,19 @@ pub use stylance_core::Config;
 use stylance_core::ModifyCssResult;
 use walkdir::WalkDir;
 
-pub fn run(manifest_dir: &Path, config: &Config) -> anyhow::Result<()> {
+pub fn run(config: &Config) -> anyhow::Result<()> {
     println!("Running stylance");
-    run_silent(manifest_dir, config, |file_path| {
-        println!("{}", file_path.display())
-    })
+    run_silent(config, |file_path| println!("{}", file_path.display()))
 }
 
 pub fn run_silent(
-    manifest_dir: &Path,
     config: &Config,
     mut file_visit_callback: impl FnMut(&Path),
 ) -> anyhow::Result<()> {
     let mut modified_css_files = Vec::new();
 
     for folder in config.folders.iter() {
-        for (entry, meta) in WalkDir::new(manifest_dir.join(folder))
+        for (entry, meta) in WalkDir::new(config.manifest_dir.join(folder))
             .into_iter()
             .filter_map(|e| e.ok())
             .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))

@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 use stylance_cli::run;
-use stylance_core::{load_config, Config};
+use stylance_core::Config;
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
     check_output_collisions(&all_params)?;
 
     for params in &all_params {
-        run(&params.manifest_dir, &params.config)?;
+        run(&params.config)?;
     }
 
     if cli.watch {
@@ -116,8 +116,11 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunParams> {
-    let manifest_dir_buf = manifest_dir.to_path_buf();
-    let mut config = spawn_blocking(move || load_config(&manifest_dir_buf)).await??;
+    let mut config = spawn_blocking({
+        let manifest_dir = manifest_dir.to_path_buf();
+        move || Config::load(manifest_dir)
+    })
+    .await??;
 
     config.output_file = cli
         .output_file
@@ -248,9 +251,7 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
             let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
             while (debounced_next(&mut stream).await).is_some() {
                 let run_params = run_params.borrow().clone();
-                if let Ok(Err(e)) =
-                    spawn_blocking(move || run(&run_params.manifest_dir, &run_params.config)).await
-                {
+                if let Ok(Err(e)) = spawn_blocking(move || run(&run_params.config)).await {
                     eprintln!("{e}");
                 }
             }

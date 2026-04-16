@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{quote, quote_spanned};
+use stylance_core::Config;
 use syn::{parse_macro_input, LitStr};
 
 fn try_import_style_classes_with_path(
@@ -11,7 +12,7 @@ fn try_import_style_classes_with_path(
     file_path: &Path,
     identifier_span: Span,
 ) -> anyhow::Result<TokenStream> {
-    let config = stylance_core::load_config(manifest_path)?;
+    let config = Config::load(manifest_path.to_path_buf())?;
     let (_, classes) = stylance_core::get_classes(file_path, &config)?;
 
     let binding = file_path.canonicalize().unwrap();
