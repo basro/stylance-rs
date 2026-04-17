@@ -208,21 +208,20 @@ async fn debounced_next<T>(s: &mut (impl Stream<Item = T> + Unpin)) -> Option<T>
 
 /// Watch a single manifest dir.
 async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
+    let mut config = Arc::new(config);
     // Wait for run_events to run the stylance process.
-    let (run_events_tx, run_events) = mpsc::channel::<Arc<Config>>(1);
+    let (run_events_tx, mut run_events) = tokio::sync::watch::channel(config.clone());
     tokio::spawn({
         async move {
-            let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
-            while let Some(config) = debounced_next(&mut stream).await {
-                let config = config.clone();
+            while run_events.changed().await.is_ok() {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let config = run_events.borrow_and_update().clone();
                 if let Ok(Err(e)) = spawn_blocking(move || run(&config)).await {
                     eprintln!("{e}");
                 }
             }
         }
     });
-
-    let mut config = Arc::new(config);
 
     loop {
         // Watch Cargo.toml to update the current config.
@@ -246,7 +245,7 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
                 while let Some(path) = folder_events.recv().await {
                     let str_path = path.to_string_lossy();
                     if config.extensions.iter().any(|ext| str_path.ends_with(ext)) {
-                        let _ = run_events_tx.try_send(config);
+                        let _ = run_events_tx.send(config);
                         break;
                     }
                 }
@@ -271,6 +270,7 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
             }
         }
 
-        run_events_tx.try_send(config.clone())?;
+        // trigger a rebuild
+        run_events_tx.send(config.clone())?;
     }
 }
