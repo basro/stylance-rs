@@ -26,106 +26,7 @@ pub fn run_silent(
         file_visit_callback(&f.path);
     }
 
-    {
-        // sort by (filename, path)
-        fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
-            (
-                a.path.file_name().expect("should be a file"),
-                &a.normalized_path_str,
-            )
-        }
-        modified_css_files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
-    }
-
-    if let Some(output_file) = &config.output_file {
-        if let Some(parent) = output_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        let mut file = BufWriter::new(File::create(output_file)?);
-
-        if let Some(scss_prelude) = &config.scss_prelude {
-            if output_file
-                .extension()
-                .filter(|ext| ext.to_string_lossy() == "scss")
-                .is_some()
-            {
-                file.write_all(scss_prelude.as_bytes())?;
-                file.write_all(b"\n\n")?;
-            }
-        }
-
-        file.write_all(
-            modified_css_files
-                .iter()
-                .map(|r| r.contents.as_ref())
-                .collect::<Vec<_>>()
-                .join("\n\n")
-                .as_bytes(),
-        )?;
-    }
-
-    if let Some(output_dir) = &config.output_dir {
-        let output_dir = output_dir.join("stylance");
-        fs::create_dir_all(&output_dir)?;
-
-        let entries = fs::read_dir(&output_dir)?;
-
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-
-            if file_type.is_file() {
-                fs::remove_file(entry.path())?;
-            }
-        }
-
-        let mut new_files = Vec::new();
-        for modified_css in modified_css_files {
-            let extension = modified_css
-                .path
-                .extension()
-                .map(|e| e.to_string_lossy())
-                .filter(|e| e == "css")
-                .unwrap_or(Cow::from("scss"));
-
-            let new_file_name = format!(
-                "{}-{}.{extension}",
-                modified_css
-                    .path
-                    .file_stem()
-                    .expect("This path should be a file")
-                    .to_string_lossy(),
-                modified_css.hash
-            );
-
-            new_files.push(new_file_name.clone());
-
-            let file_path = output_dir.join(new_file_name);
-            let mut file = BufWriter::new(File::create(file_path)?);
-
-            if let Some(scss_prelude) = &config.scss_prelude {
-                if extension == "scss" {
-                    file.write_all(scss_prelude.as_bytes())?;
-                    file.write_all(b"\n\n")?;
-                }
-            }
-
-            file.write_all(modified_css.contents.as_bytes())?;
-        }
-
-        let mut file = File::create(output_dir.join("_index.scss"))?;
-        file.write_all(
-            new_files
-                .iter()
-                .map(|f| format!("@use \"{f}\";\n"))
-                .collect::<Vec<_>>()
-                .join("")
-                .as_bytes(),
-        )?;
-    }
-
-    Ok(())
+    write_output(&[(config, &modified_css_files)])
 }
 
 pub fn load_and_modify_crate(config: &Config) -> anyhow::Result<Vec<ModifyCssResult>> {
@@ -162,6 +63,111 @@ pub fn load_and_modify_crate(config: &Config) -> anyhow::Result<Vec<ModifyCssRes
     }
 
     Ok(modified_css_files)
+}
+
+pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<()> {
+    for &(config, files) in crates {
+        let mut files = files.iter().collect::<Vec<_>>();
+        {
+            // sort by (filename, path)
+            fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
+                (
+                    a.path.file_name().expect("should be a file"),
+                    &a.normalized_path_str,
+                )
+            }
+            files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
+        }
+
+        if let Some(output_file) = &config.output_file {
+            if let Some(parent) = output_file.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            let mut file = BufWriter::new(File::create(output_file)?);
+
+            if let Some(scss_prelude) = &config.scss_prelude {
+                if output_file
+                    .extension()
+                    .filter(|ext| ext.to_string_lossy() == "scss")
+                    .is_some()
+                {
+                    file.write_all(scss_prelude.as_bytes())?;
+                    file.write_all(b"\n\n")?;
+                }
+            }
+
+            file.write_all(
+                files
+                    .iter()
+                    .map(|r| r.contents.as_ref())
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+                    .as_bytes(),
+            )?;
+        }
+
+        if let Some(output_dir) = &config.output_dir {
+            let output_dir = output_dir.join("stylance");
+            fs::create_dir_all(&output_dir)?;
+
+            let entries = fs::read_dir(&output_dir)?;
+
+            for entry in entries {
+                let entry = entry?;
+                let file_type = entry.file_type()?;
+
+                if file_type.is_file() {
+                    fs::remove_file(entry.path())?;
+                }
+            }
+
+            let mut new_files = Vec::new();
+            for modified_css in files.iter() {
+                let extension = modified_css
+                    .path
+                    .extension()
+                    .map(|e| e.to_string_lossy())
+                    .filter(|e| e == "css")
+                    .unwrap_or(Cow::from("scss"));
+
+                let new_file_name = format!(
+                    "{}-{}.{extension}",
+                    modified_css
+                        .path
+                        .file_stem()
+                        .expect("This path should be a file")
+                        .to_string_lossy(),
+                    modified_css.hash
+                );
+
+                new_files.push(new_file_name.clone());
+
+                let file_path = output_dir.join(new_file_name);
+                let mut file = BufWriter::new(File::create(file_path)?);
+
+                if let Some(scss_prelude) = &config.scss_prelude {
+                    if extension == "scss" {
+                        file.write_all(scss_prelude.as_bytes())?;
+                        file.write_all(b"\n\n")?;
+                    }
+                }
+
+                file.write_all(modified_css.contents.as_bytes())?;
+            }
+
+            let mut file = File::create(output_dir.join("_index.scss"))?;
+            file.write_all(
+                new_files
+                    .iter()
+                    .map(|f| format!("@use \"{f}\";\n"))
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .as_bytes(),
+            )?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
