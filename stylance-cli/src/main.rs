@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -172,57 +173,64 @@ fn watch_folders(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<Pa
     Ok(events_rx)
 }
 
-// async fn debounced_next<T>(s: &mut (impl Stream<Item = T> + Unpin)) -> Option<T> {
-//     let mut v = s.next().await;
-
-//     loop {
-//         let result = tokio::time::timeout(Duration::from_millis(50), s.next()).await;
-//         match result {
-//             Ok(Some(new)) => {
-//                 v = Some(new);
-//             }
-//             Ok(None) => return v,
-//             Err(_) => return v,
-//         }
-//     }
-// }
-
-pub async fn debounced_watch<T: Clone>(
-    rx: &mut tokio::sync::watch::Receiver<T>,
-    duration: Duration,
-) -> Result<(), tokio::sync::watch::error::RecvError> {
-    rx.changed().await?;
-
-    let timer = sleep(duration);
-    tokio::pin!(timer);
-
-    loop {
-        tokio::select! {
-            // Wait for a change
-            res = rx.changed() => {
-                res?;
-                timer.as_mut().reset(Instant::now() + duration);
-            }
-
-            // Timer completes
-            _ = &mut timer => {
-                return Ok(())
-            }
-        }
-    }
-}
-
 struct CrateState {
     config: Arc<Config>,
     files: Vec<ModifyCssResult>,
 }
 
+const DEBOUNCE_DURATION: Duration = Duration::from_millis(50);
+
 async fn watch_crates(
     mut states: Vec<CrateState>,
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<(usize, CrateState)>,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<(usize, Arc<Config>)>,
 ) -> anyhow::Result<()> {
-    while let Some((idx, state)) = rx.recv().await {
-        states[idx] = state;
+    while let Some((idx, config)) = rx.recv().await {
+        // Debounce logic:
+        // Accumulate reeived until enought time elapses since the last recv.
+        // If the update is for the same crate (idx) we discard the old value.
+
+        let mut received = HashMap::from([(idx, config)]);
+        let timer = sleep(DEBOUNCE_DURATION);
+        tokio::pin!(timer);
+
+        loop {
+            tokio::select! {
+                // Wait for a change
+                res = rx.recv() => {
+                    match res {
+                        Some((idx, config)) => {
+                            received.insert(idx, config);
+                        }
+                        None => {
+                            return Ok(());
+                        }
+                    }
+                    timer.as_mut().reset(Instant::now() + DEBOUNCE_DURATION);
+                }
+
+                // Timer completes
+                _ = &mut timer => {
+                    break;
+                }
+            }
+        }
+
+        // Debounce ended, received contains 1 or more crates.
+
+        for (idx, config) in received {
+            match load_and_modify_crate(&config) {
+                Ok(modified) => {
+                    print_files(&modified);
+                    states[idx] = CrateState {
+                        config: config.clone(),
+                        files: modified,
+                    };
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                }
+            };
+        }
 
         write_output(
             &states
@@ -240,39 +248,8 @@ async fn watch_single(
     cli: Arc<Cli>,
     mut config: Arc<Config>,
     crate_idx: usize,
-    build_tx: mpsc::UnboundedSender<(usize, CrateState)>,
+    build_tx: mpsc::UnboundedSender<(usize, Arc<Config>)>,
 ) -> anyhow::Result<()> {
-    // Wait for run_events to run the stylance process.
-    let (run_events_tx, mut run_events) = tokio::sync::watch::channel(config.clone());
-    tokio::spawn({
-        async move {
-            while debounced_watch(&mut run_events, Duration::from_millis(50))
-                .await
-                .is_ok()
-            {
-                let config = run_events.borrow_and_update().clone();
-                let build_tx = build_tx.clone();
-
-                match load_and_modify_crate(&config) {
-                    Ok(modified) => {
-                        print_files(&modified);
-                        build_tx.send((
-                            crate_idx,
-                            CrateState {
-                                config: config.clone(),
-                                files: modified,
-                            },
-                        ))?;
-                    }
-                    Err(e) => {
-                        eprintln!("{e}");
-                    }
-                };
-            }
-            anyhow::Ok(())
-        }
-    });
-
     loop {
         // Watch Cargo.toml to update the current config.
         let mut watched_files = vec![config.manifest_dir.join("Cargo.toml")];
@@ -288,14 +265,14 @@ async fn watch_single(
         let mut folder_events = watch_folders(&config.folders)?;
 
         // With the events from the watched folder trigger run_events if they match the extensions of the config.
-        let watch_folders = {
-            let run_events_tx = run_events_tx.clone();
+        let watch_folders_fut = {
+            let build_tx = build_tx.clone();
             let config = config.clone();
             async move {
                 while let Some(path) = folder_events.recv().await {
                     let str_path = path.to_string_lossy();
                     if config.extensions.iter().any(|ext| str_path.ends_with(ext)) {
-                        let _ = run_events_tx.send(config);
+                        let _ = build_tx.send((crate_idx, config));
                         break;
                     }
                 }
@@ -304,7 +281,7 @@ async fn watch_single(
 
         // Run until the config has changed
         tokio::select! {
-            _ = watch_folders => {},
+            _ = watch_folders_fut => {},
             _ = cargo_toml_events.recv() => {},
         }
 
@@ -321,6 +298,6 @@ async fn watch_single(
         }
 
         // trigger a rebuild
-        run_events_tx.send(config.clone())?;
+        build_tx.send((crate_idx, config.clone()))?;
     }
 }
