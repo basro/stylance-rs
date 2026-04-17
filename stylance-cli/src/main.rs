@@ -10,7 +10,7 @@ use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
 use tokio::{
     sync::mpsc,
-    task::{spawn_blocking, JoinSet},
+    task::JoinSet,
     time::{sleep, Instant},
 };
 
@@ -47,13 +47,16 @@ fn print_files(files: &[ModifyCssResult]) {
     }
 }
 
+// We are using tokio mainly for the ease of implementing debouncing and cancellation.
+// It is alright to call io blocking functions in async functions of this app.
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let mut crate_states = Vec::new();
     for manifest_dir in &cli.manifest_dirs {
-        let config = Arc::new(load_config(&cli, manifest_dir).await?);
+        let config = Arc::new(load_config(&cli, manifest_dir)?);
         let files = load_and_modify_crate(&config)?;
         print_files(&files);
         crate_states.push(CrateState { config, files });
@@ -92,12 +95,8 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn load_config(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Config> {
-    let mut config = spawn_blocking({
-        let manifest_dir = manifest_dir.to_path_buf();
-        move || Config::load(manifest_dir)
-    })
-    .await??;
+fn load_config(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Config> {
+    let mut config = Config::load(manifest_dir.to_owned())?;
 
     config.output_file = cli.output_file.clone().or(config.output_file);
     config.output_dir = cli.output_dir.clone().or(config.output_dir);
@@ -253,26 +252,22 @@ async fn watch_single(
             {
                 let config = run_events.borrow_and_update().clone();
                 let build_tx = build_tx.clone();
-                spawn_blocking(move || {
-                    match load_and_modify_crate(&config) {
-                        Ok(modified) => {
-                            print_files(&modified);
-                            build_tx.send((
-                                crate_idx,
-                                CrateState {
-                                    config: config.clone(),
-                                    files: modified,
-                                },
-                            ))?;
-                        }
-                        Err(e) => {
-                            eprintln!("{e}");
-                        }
-                    };
 
-                    anyhow::Ok(())
-                })
-                .await??;
+                match load_and_modify_crate(&config) {
+                    Ok(modified) => {
+                        print_files(&modified);
+                        build_tx.send((
+                            crate_idx,
+                            CrateState {
+                                config: config.clone(),
+                                files: modified,
+                            },
+                        ))?;
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                    }
+                };
             }
             anyhow::Ok(())
         }
@@ -316,7 +311,7 @@ async fn watch_single(
         // The cargo_toml_watcher triggered so wait a bit and reload the config.
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        match load_config(&cli, &config.manifest_dir).await {
+        match load_config(&cli, &config.manifest_dir) {
             Ok(new_config) => {
                 config = Arc::new(new_config);
             }
