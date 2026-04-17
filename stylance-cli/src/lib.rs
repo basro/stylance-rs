@@ -158,9 +158,9 @@ pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<
             outputs.push(Cow::Owned(
                 new_files
                     .iter()
-                    .map(|f| format!("@use \"{f}\";\n"))
+                    .map(|f| format!("@use \"{f}\";"))
                     .collect::<Vec<_>>()
-                    .join(""),
+                    .join("\n"),
             ));
         }
     }
