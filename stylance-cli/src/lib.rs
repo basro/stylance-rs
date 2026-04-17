@@ -20,37 +20,10 @@ pub fn run_silent(
     config: &Config,
     mut file_visit_callback: impl FnMut(&Path),
 ) -> anyhow::Result<()> {
-    let mut modified_css_files = Vec::new();
+    let mut modified_css_files = load_and_modify_crate(config)?;
 
-    for folder in config.folders.iter() {
-        for (entry, meta) in WalkDir::new(folder)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))
-        {
-            if meta.is_file() {
-                let path_str = entry.path().to_string_lossy();
-                if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
-                    file_visit_callback(entry.path());
-                    modified_css_files
-                        .push(stylance_core::load_and_modify_css(entry.path(), config)?);
-                }
-            }
-        }
-    }
-
-    {
-        // Verify that there are no hash collisions
-        let mut map = HashMap::new();
-        for file in modified_css_files.iter() {
-            if let Some(previous_file) = map.insert(&file.hash, file) {
-                bail!(
-                    "The following files had a hash collision:\n{}\n{}\nConsider increasing the hash_len setting.",
-                    file.path.to_string_lossy(),
-                    previous_file.path.to_string_lossy()
-                );
-            }
-        }
+    for f in &modified_css_files {
+        file_visit_callback(&f.path);
     }
 
     {
@@ -153,6 +126,42 @@ pub fn run_silent(
     }
 
     Ok(())
+}
+
+pub fn load_and_modify_crate(config: &Config) -> anyhow::Result<Vec<ModifyCssResult>> {
+    let mut modified_css_files = Vec::new();
+
+    for folder in config.folders.iter() {
+        for (entry, meta) in WalkDir::new(folder)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))
+        {
+            if meta.is_file() {
+                let path_str = entry.path().to_string_lossy();
+                if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
+                    modified_css_files
+                        .push(stylance_core::load_and_modify_css(entry.path(), config)?);
+                }
+            }
+        }
+    }
+
+    {
+        // Verify that there are no hash collisions
+        let mut map = HashMap::new();
+        for file in modified_css_files.iter() {
+            if let Some(previous_file) = map.insert(&file.hash, file) {
+                bail!(
+                    "The following files had a hash collision:\n{}\n{}\nConsider increasing the hash_len setting.",
+                    file.path.to_string_lossy(),
+                    previous_file.path.to_string_lossy()
+                );
+            }
+        }
+    }
+
+    Ok(modified_css_files)
 }
 
 #[cfg(test)]
