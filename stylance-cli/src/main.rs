@@ -2,6 +2,7 @@ use anyhow::bail;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    pin::Pin,
     sync::Arc,
     time::Duration,
 };
@@ -13,6 +14,7 @@ use notify::{Event, RecursiveMode, Watcher};
 use tokio::{
     sync::mpsc,
     task::{spawn_blocking, JoinSet},
+    time::{sleep, Instant, Sleep},
 };
 use tokio_stream::{Stream, StreamExt};
 
@@ -206,6 +208,31 @@ async fn debounced_next<T>(s: &mut (impl Stream<Item = T> + Unpin)) -> Option<T>
     }
 }
 
+pub async fn debounced_watch<T: Clone>(
+    rx: &mut tokio::sync::watch::Receiver<T>,
+    duration: Duration,
+) -> Result<(), tokio::sync::watch::error::RecvError> {
+    rx.changed().await?;
+
+    let timer = sleep(duration);
+    tokio::pin!(timer);
+
+    loop {
+        tokio::select! {
+            // Wait for a change
+            res = rx.changed() => {
+                res?;
+                timer.as_mut().reset(Instant::now() + duration);
+            }
+
+            // Timer completes
+            _ = &mut timer => {
+                return Ok(())
+            }
+        }
+    }
+}
+
 /// Watch a single manifest dir.
 async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
     let mut config = Arc::new(config);
@@ -213,8 +240,10 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
     let (run_events_tx, mut run_events) = tokio::sync::watch::channel(config.clone());
     tokio::spawn({
         async move {
-            while run_events.changed().await.is_ok() {
-                tokio::time::sleep(Duration::from_millis(50)).await;
+            while debounced_watch(&mut run_events, Duration::from_millis(50))
+                .await
+                .is_ok()
+            {
                 let config = run_events.borrow_and_update().clone();
                 if let Ok(Err(e)) = spawn_blocking(move || run(&config)).await {
                     eprintln!("{e}");
