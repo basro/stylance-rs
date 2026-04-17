@@ -66,47 +66,10 @@ pub fn load_and_modify_crate(config: &Config) -> anyhow::Result<Vec<ModifyCssRes
 }
 
 pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<()> {
-    for &(config, files) in crates {
-        let mut files = files.iter().collect::<Vec<_>>();
-        {
-            // sort by (filename, path)
-            fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
-                (
-                    a.path.file_name().expect("should be a file"),
-                    &a.normalized_path_str,
-                )
-            }
-            files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
-        }
+    let mut output_files = HashMap::<Cow<Path>, Vec<Cow<str>>>::new();
 
-        if let Some(output_file) = &config.output_file {
-            if let Some(parent) = output_file.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            let mut file = BufWriter::new(File::create(output_file)?);
-
-            if let Some(scss_prelude) = &config.scss_prelude {
-                if output_file
-                    .extension()
-                    .filter(|ext| ext.to_string_lossy() == "scss")
-                    .is_some()
-                {
-                    file.write_all(scss_prelude.as_bytes())?;
-                    file.write_all(b"\n\n")?;
-                }
-            }
-
-            file.write_all(
-                files
-                    .iter()
-                    .map(|r| r.contents.as_ref())
-                    .collect::<Vec<_>>()
-                    .join("\n\n")
-                    .as_bytes(),
-            )?;
-        }
-
+    // Clear the output dir of all crates.
+    for &(config, _) in crates {
         if let Some(output_dir) = &config.output_dir {
             let output_dir = output_dir.join("stylance");
             fs::create_dir_all(&output_dir)?;
@@ -121,9 +84,42 @@ pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<
                     fs::remove_file(entry.path())?;
                 }
             }
+        }
+    }
 
+    for &(config, files) in crates {
+        let mut files = files.iter().collect::<Vec<_>>();
+        {
+            // sort by (filename, path)
+            fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
+                (
+                    a.path.file_name().expect("should be a file"),
+                    &a.normalized_path_str,
+                )
+            }
+            files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
+        }
+
+        if let Some(output_file) = &config.output_file {
+            let outputs = output_files.entry(Cow::Borrowed(output_file)).or_default();
+
+            if let Some(scss_prelude) = &config.scss_prelude {
+                if output_file
+                    .extension()
+                    .filter(|ext| ext.to_string_lossy() == "scss")
+                    .is_some()
+                {
+                    outputs.push(Cow::Borrowed(scss_prelude.as_str()));
+                }
+            }
+
+            outputs.extend(files.iter().map(|f| Cow::Borrowed(f.contents.as_str())));
+        }
+
+        if let Some(output_dir) = &config.output_dir {
+            let output_dir = output_dir.join("stylance");
             let mut new_files = Vec::new();
-            for modified_css in files.iter() {
+            for modified_css in files {
                 let extension = modified_css
                     .path
                     .extension()
@@ -156,17 +152,28 @@ pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<
                 file.write_all(modified_css.contents.as_bytes())?;
             }
 
-            let mut file = File::create(output_dir.join("_index.scss"))?;
-            file.write_all(
+            let index_path = output_dir.join("_index.scss");
+
+            let outputs = output_files.entry(Cow::Owned(index_path)).or_default();
+            outputs.push(Cow::Owned(
                 new_files
                     .iter()
                     .map(|f| format!("@use \"{f}\";\n"))
                     .collect::<Vec<_>>()
-                    .join("")
-                    .as_bytes(),
-            )?;
+                    .join(""),
+            ));
         }
     }
+
+    for (output_file, files) in output_files {
+        if let Some(parent) = output_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut file = BufWriter::new(File::create(output_file)?);
+        file.write_all(files.join("\n\n").as_bytes())?;
+    }
+
     Ok(())
 }
 
