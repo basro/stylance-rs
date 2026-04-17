@@ -187,7 +187,7 @@ async fn watch_crates(
     while let Some((idx, config)) = rx.recv().await {
         // Debounce logic:
         // Accumulate reeived until enought time elapses since the last recv.
-        // If the update is for the same crate (idx) we discard the old value.
+        // If the update is for the same crate (idx) we overwrite the config.
 
         let mut received = HashMap::from([(idx, config)]);
         let timer = sleep(DEBOUNCE_DURATION);
@@ -243,7 +243,9 @@ async fn watch_crates(
     Ok(())
 }
 
-/// Watch a single manifest dir.
+/// Watch a single crate for file changes, sends the config over build_tx to signal it needs to rebuild.
+///
+/// Is in charge of reloading the config when it changes.
 async fn watch_single(
     cli: Arc<Cli>,
     mut config: Arc<Config>,
