@@ -20,7 +20,7 @@ pub fn run_silent(
     config: &Config,
     mut file_visit_callback: impl FnMut(&Path),
 ) -> anyhow::Result<()> {
-    let mut modified_css_files = load_and_modify_crate(config)?;
+    let modified_css_files = load_and_modify_crate(config)?;
 
     for f in &modified_css_files {
         file_visit_callback(&f.path);

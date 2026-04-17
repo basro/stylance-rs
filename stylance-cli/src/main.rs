@@ -1,20 +1,17 @@
-use anyhow::bail;
 use std::{
-    collections::HashMap,
     path::{Path, PathBuf},
-    pin::Pin,
     sync::Arc,
     time::Duration,
 };
-use stylance_cli::run;
-use stylance_core::Config;
+use stylance_cli::{load_and_modify_crate, write_output};
+use stylance_core::{Config, ModifyCssResult};
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
 use tokio::{
     sync::mpsc,
     task::{spawn_blocking, JoinSet},
-    time::{sleep, Instant, Sleep},
+    time::{sleep, Instant},
 };
 use tokio_stream::{Stream, StreamExt};
 
@@ -45,51 +42,30 @@ struct Cli {
     watch: bool,
 }
 
-fn check_output_collisions(all_configs: &[Config]) -> anyhow::Result<()> {
-    let mut seen_files: HashMap<PathBuf, &Path> = HashMap::new();
-    let mut seen_dirs: HashMap<PathBuf, &Path> = HashMap::new();
-
-    for config in all_configs {
-        if let Some(output_file) = &config.output_file {
-            if let Some(prev) = seen_files.insert(output_file.clone(), &config.manifest_dir) {
-                bail!(
-                    "Multiple crates share the same output_file: {}\n  - {}\n  - {}",
-                    output_file.display(),
-                    prev.display(),
-                    config.manifest_dir.display(),
-                );
-            }
-        }
-        if let Some(output_dir) = &config.output_dir {
-            if let Some(prev) = seen_dirs.insert(output_dir.clone(), &config.manifest_dir) {
-                bail!(
-                    "Multiple crates share the same output_dir: {}\n  - {}\n  - {}",
-                    output_dir.display(),
-                    prev.display(),
-                    config.manifest_dir.display(),
-                );
-            }
-        }
+fn print_files(files: &[ModifyCssResult]) {
+    for file in files {
+        println!("{}", file.path.to_string_lossy());
     }
-
-    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let mut all_configs = Vec::new();
+    let mut crate_states = Vec::new();
     for manifest_dir in &cli.manifest_dirs {
-        let params = load_config(&cli, manifest_dir).await?;
-        all_configs.push(params);
+        let config = Arc::new(load_config(&cli, manifest_dir).await?);
+        let files = load_and_modify_crate(&config)?;
+        print_files(&files);
+        crate_states.push(CrateState { config, files });
     }
 
-    check_output_collisions(&all_configs)?;
-
-    for config in &all_configs {
-        run(config)?;
-    }
+    write_output(
+        &crate_states
+            .iter()
+            .map(|c| (&*c.config, c.files.as_slice()))
+            .collect::<Vec<_>>(),
+    )?;
 
     if cli.watch {
         let cli = Arc::new(cli);
@@ -97,10 +73,15 @@ async fn main() -> anyhow::Result<()> {
         // Spawn one independent watch task per manifest dir, as each crate
         // has its own config, folders, and output.
         let mut set = JoinSet::new();
-        for config in all_configs {
+
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        for (crate_idx, CrateState { config, .. }) in crate_states.iter().enumerate() {
             let cli = cli.clone();
-            set.spawn(watch_single(cli, config));
+            set.spawn(watch_single(cli, config.clone(), crate_idx, tx.clone()));
         }
+
+        set.spawn(watch_crates(crate_states, rx));
 
         // If any watcher ends (only happens on error), abort the rest and exit.
         if let Some(result) = set.join_next().await {
@@ -193,20 +174,20 @@ fn watch_folders(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<Pa
     Ok(events_rx)
 }
 
-async fn debounced_next<T>(s: &mut (impl Stream<Item = T> + Unpin)) -> Option<T> {
-    let mut v = s.next().await;
+// async fn debounced_next<T>(s: &mut (impl Stream<Item = T> + Unpin)) -> Option<T> {
+//     let mut v = s.next().await;
 
-    loop {
-        let result = tokio::time::timeout(Duration::from_millis(50), s.next()).await;
-        match result {
-            Ok(Some(new)) => {
-                v = Some(new);
-            }
-            Ok(None) => return v,
-            Err(_) => return v,
-        }
-    }
-}
+//     loop {
+//         let result = tokio::time::timeout(Duration::from_millis(50), s.next()).await;
+//         match result {
+//             Ok(Some(new)) => {
+//                 v = Some(new);
+//             }
+//             Ok(None) => return v,
+//             Err(_) => return v,
+//         }
+//     }
+// }
 
 pub async fn debounced_watch<T: Clone>(
     rx: &mut tokio::sync::watch::Receiver<T>,
@@ -233,9 +214,36 @@ pub async fn debounced_watch<T: Clone>(
     }
 }
 
+struct CrateState {
+    config: Arc<Config>,
+    files: Vec<ModifyCssResult>,
+}
+
+async fn watch_crates(
+    mut states: Vec<CrateState>,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<(usize, CrateState)>,
+) -> anyhow::Result<()> {
+    while let Some((idx, state)) = rx.recv().await {
+        states[idx] = state;
+
+        write_output(
+            &states
+                .iter()
+                .map(|c| (&*c.config, c.files.as_slice()))
+                .collect::<Vec<_>>(),
+        )?;
+    }
+
+    Ok(())
+}
+
 /// Watch a single manifest dir.
-async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
-    let mut config = Arc::new(config);
+async fn watch_single(
+    cli: Arc<Cli>,
+    mut config: Arc<Config>,
+    crate_idx: usize,
+    build_tx: mpsc::UnboundedSender<(usize, CrateState)>,
+) -> anyhow::Result<()> {
     // Wait for run_events to run the stylance process.
     let (run_events_tx, mut run_events) = tokio::sync::watch::channel(config.clone());
     tokio::spawn({
@@ -245,10 +253,29 @@ async fn watch_single(cli: Arc<Cli>, config: Config) -> anyhow::Result<()> {
                 .is_ok()
             {
                 let config = run_events.borrow_and_update().clone();
-                if let Ok(Err(e)) = spawn_blocking(move || run(&config)).await {
-                    eprintln!("{e}");
-                }
+                let build_tx = build_tx.clone();
+                spawn_blocking(move || {
+                    match load_and_modify_crate(&config) {
+                        Ok(modified) => {
+                            print_files(&modified);
+                            build_tx.send((
+                                crate_idx,
+                                CrateState {
+                                    config: config.clone(),
+                                    files: modified,
+                                },
+                            ))?;
+                        }
+                        Err(e) => {
+                            eprintln!("{e}");
+                        }
+                    };
+
+                    anyhow::Ok(())
+                })
+                .await??;
             }
+            anyhow::Ok(())
         }
     });
 
