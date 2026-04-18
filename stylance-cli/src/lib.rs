@@ -3,12 +3,12 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{BufWriter, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::bail;
 pub use stylance_core::Config;
-use stylance_core::ModifyCssResult;
+use stylance_core::{path_utils, ModifyCssResult};
 use walkdir::WalkDir;
 
 pub fn run(config: &Config) -> anyhow::Result<()> {
@@ -66,7 +66,7 @@ pub fn load_and_modify_crate(config: &Config) -> anyhow::Result<Vec<ModifyCssRes
 }
 
 pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<()> {
-    let mut output_files = HashMap::<Cow<Path>, Vec<Cow<str>>>::new();
+    let mut output_files = HashMap::<PathBuf, Vec<Cow<str>>>::new();
 
     // Clear the output dir of all crates.
     for &(config, _) in crates {
@@ -91,17 +91,19 @@ pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<
         let mut files = files.iter().collect::<Vec<_>>();
         {
             // sort by (filename, path)
-            fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
+            fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &Path) {
                 (
                     a.path.file_name().expect("should be a file"),
-                    &a.normalized_path_str,
+                    &a.relative_path,
                 )
             }
             files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
         }
 
         if let Some(output_file) = &config.output_file {
-            let outputs = output_files.entry(Cow::Borrowed(output_file)).or_default();
+            let outputs = output_files
+                .entry(path_utils::normalize(output_file)?)
+                .or_default();
 
             if let Some(scss_prelude) = &config.scss_prelude {
                 if output_file
@@ -154,7 +156,9 @@ pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<
 
             let index_path = output_dir.join("_index.scss");
 
-            let outputs = output_files.entry(Cow::Owned(index_path)).or_default();
+            let outputs = output_files
+                .entry(path_utils::normalize(index_path)?)
+                .or_default();
             outputs.push(Cow::Owned(
                 new_files
                     .iter()

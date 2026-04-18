@@ -3,12 +3,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use anyhow::Context;
+use anyhow::bail;
 
-// This was taken from the crate path-clean 1.0.1
-// Added code verbatim to avoid introducing an extra dependency
-
-/// Normalizes a path. It performs the following, lexically:
+/// Cleans a path. It performs the following, lexically:
 /// 1. Reduce multiple slashes to a single slash.
 /// 2. Eliminate `.` path name elements (the current directory).
 /// 3. Eliminate `..` path name elements (the parent directory) and the non-`.` non-`..`, element that precedes them.
@@ -16,6 +13,9 @@ use anyhow::Context;
 /// 5. Leave intact `..` elements that begin a non-rooted path.
 ///
 /// If the result of this process is an empty string, return the string `"."`, representing the current directory.
+///
+/// This was taken from the crate path-clean 1.0.1
+/// Code was copied in order to avoid introducing small dependencies
 pub fn clean<P>(path: P) -> PathBuf
 where
     P: AsRef<Path>,
@@ -47,7 +47,11 @@ where
 }
 
 /// If the path is relative it joins it with CWD to make it absolute and then cleans it.
-pub fn normalize(path: &Path) -> io::Result<PathBuf> {
+pub fn normalize<P>(path: P) -> io::Result<PathBuf>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
     Ok(if path.is_absolute() {
         clean(path)
     } else {
@@ -55,18 +59,108 @@ pub fn normalize(path: &Path) -> io::Result<PathBuf> {
     })
 }
 
-pub fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<String> {
-    let base = normalize(base)?;
-    let subpath = normalize(subpath)?;
+/**
+Computes the relative path between from_path and to_path.
 
-    let relative_path_str: String = subpath
-        .strip_prefix(base)
-        .context("css file should be inside the hash root path")?
-        .to_string_lossy()
-        .into();
+Joining the resulting path with from_path will result in a path that points to the same
+place as to_path.
 
-    #[cfg(target_os = "windows")]
-    let relative_path_str = relative_path_str.replace('\\', "/");
+Errors if the paths have different prefixes. (for example they point to different hard
+drives in windows)
 
-    Ok(relative_path_str)
+## Panics
+This function can panic if the paths have not been
+normalized (they must be absolute and contain no `.` or `..` components)
+*/
+pub fn diff_normalized_paths<P, B>(to_path: P, from_path: B) -> anyhow::Result<PathBuf>
+where
+    P: AsRef<Path>,
+    B: AsRef<Path>,
+{
+    let to_path = to_path.as_ref();
+    let from_path = from_path.as_ref();
+
+    assert!(to_path.is_absolute() && from_path.is_absolute());
+
+    let mut ita = to_path.components().peekable();
+    let mut itb = from_path.components().peekable();
+
+    // Skip the common prefix between the two paths
+    while let (Some(a), Some(b)) = (ita.peek(), itb.peek()) {
+        match (a, b) {
+            (Component::Prefix(pa), Component::Prefix(pb)) if pa != pb => {
+                bail!("Path prefix doesn't match")
+            }
+            _ if a == b => {
+                ita.next();
+                itb.next();
+            }
+            _ => break,
+        }
+    }
+
+    let mut result = Vec::new();
+
+    // For each remaining component in base, go up one level
+    for comp in itb {
+        assert!(matches!(comp, Component::Normal(_)));
+        result.push(Component::ParentDir);
+    }
+
+    // Then descend into the remaining part of path
+    for comp in ita {
+        result.push(comp);
+    }
+
+    if result.is_empty() {
+        result.push(Component::CurDir);
+    }
+
+    Ok(result.iter().collect())
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::PathBuf;
+
+    use crate::path_utils::{diff_normalized_paths, normalize};
+
+    #[test]
+    fn test_diff_normalized_paths() {
+        assert_eq!(
+            diff_normalized_paths(
+                normalize("/some/path").unwrap(),
+                normalize("/some/foo/baz/path").unwrap()
+            )
+            .unwrap(),
+            PathBuf::from("../../../path")
+        );
+
+        assert_eq!(
+            diff_normalized_paths(
+                normalize("/some/foo/baz/path").unwrap(),
+                normalize("/some/path").unwrap(),
+            )
+            .unwrap(),
+            PathBuf::from("../foo/baz/path")
+        );
+
+        assert_eq!(
+            diff_normalized_paths(
+                normalize("some/path").unwrap(),
+                normalize("some/foo/baz/path").unwrap()
+            )
+            .unwrap(),
+            PathBuf::from("../../../path")
+        );
+
+        assert_eq!(
+            diff_normalized_paths(
+                normalize("some/foo/baz/path").unwrap(),
+                normalize("some/path").unwrap(),
+            )
+            .unwrap(),
+            PathBuf::from("../foo/baz/path")
+        );
+    }
 }

@@ -1,11 +1,12 @@
 use std::{
     collections::HashMap,
+    env,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
 use stylance_cli::{load_and_modify_crate, write_output};
-use stylance_core::{Config, ModifyCssResult};
+use stylance_core::{path_utils, Config, ModifyCssResult};
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
@@ -42,12 +43,6 @@ struct Cli {
     watch: bool,
 }
 
-fn print_files(files: &[ModifyCssResult]) {
-    for file in files {
-        println!("{}", file.path.to_string_lossy());
-    }
-}
-
 // We are using tokio mainly for the ease of implementing debouncing and cancellation.
 // It is alright to call io blocking functions in async functions of this app.
 
@@ -59,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     for manifest_dir in &cli.manifest_dirs {
         let config = Arc::new(load_config(&cli, manifest_dir)?);
         let files = load_and_modify_crate(&config)?;
-        print_files(&files);
+        print_files(&files)?;
         crate_states.push(CrateState { config, files });
     }
 
@@ -93,6 +88,17 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn print_files(files: &[ModifyCssResult]) -> anyhow::Result<()> {
+    let cwd = env::current_dir()?;
+    for file in files {
+        println!(
+            "{}",
+            path_utils::diff_normalized_paths(&file.path, &cwd)?.to_string_lossy()
+        );
+    }
     Ok(())
 }
 
@@ -220,7 +226,7 @@ async fn watch_crates(
         for (idx, config) in received {
             match load_and_modify_crate(&config) {
                 Ok(modified) => {
-                    print_files(&modified);
+                    print_files(&modified)?;
                     states[idx] = CrateState {
                         config: config.clone(),
                         files: modified,

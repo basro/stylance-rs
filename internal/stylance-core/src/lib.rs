@@ -1,7 +1,7 @@
 mod class_name_pattern;
 mod config;
 mod parse;
-mod path_utils;
+pub mod path_utils;
 
 use std::{
     borrow::Cow,
@@ -15,11 +15,17 @@ use parse::{CssFragment, Global};
 use siphasher::sip::SipHasher13;
 
 pub use crate::config::{Config, PartialConfig};
-use crate::path_utils::normalized_relative_path;
+use crate::path_utils::{diff_normalized_paths, normalize};
 
-pub fn hash_string(input: &str) -> u64 {
+pub fn hash_path(input: &Path) -> u64 {
+    let normalized_separators = input
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+
     let mut hasher = SipHasher13::new();
-    input.hash(&mut hasher);
+    normalized_separators.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -28,10 +34,8 @@ pub struct Class {
     pub hashed_name: String,
 }
 
-fn make_hash(hash_root: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
-    let relative_path_str = normalized_relative_path(hash_root, css_file)?;
-
-    let hash = hash_string(&relative_path_str);
+fn make_hash(relative_path: &Path, hash_len: usize) -> anyhow::Result<String> {
+    let hash = hash_path(relative_path);
     let mut hash_str = format!("{hash:x}");
     hash_str.truncate(hash_len);
     Ok(hash_str)
@@ -39,14 +43,18 @@ fn make_hash(hash_root: &Path, css_file: &Path, hash_len: usize) -> anyhow::Resu
 
 pub struct ModifyCssResult {
     pub path: PathBuf,
-    pub normalized_path_str: String,
+    pub relative_path: PathBuf,
     pub hash: String,
     pub contents: String,
 }
 
 pub fn load_and_modify_css(css_file: &Path, config: &Config) -> anyhow::Result<ModifyCssResult> {
-    let hash_str = make_hash(&config.hash_root_path, css_file, config.hash_len)?;
-    let css_file_contents = fs::read_to_string(css_file)?;
+    let css_file = normalize(css_file)?;
+    let hash_root = normalize(&config.hash_root_path)?;
+    let relative_path = diff_normalized_paths(&css_file, &hash_root)?;
+    let hash_str = make_hash(&relative_path, config.hash_len)?;
+
+    let css_file_contents = fs::read_to_string(&css_file)?;
 
     let fragments = parse::parse_css(&css_file_contents).map_err(|e| anyhow!("{e}"))?;
 
@@ -71,15 +79,18 @@ pub fn load_and_modify_css(css_file: &Path, config: &Config) -> anyhow::Result<M
     new_file.push_str(cursor);
 
     Ok(ModifyCssResult {
-        path: css_file.to_owned(),
-        normalized_path_str: normalized_relative_path(&config.hash_root_path, css_file)?,
+        path: css_file,
+        relative_path,
         hash: hash_str,
         contents: new_file,
     })
 }
 
 pub fn get_classes(css_file: &Path, config: &Config) -> anyhow::Result<(String, Vec<Class>)> {
-    let hash_str = make_hash(&config.hash_root_path, css_file, config.hash_len)?;
+    let css_file = normalize(css_file)?;
+    let hash_root = normalize(&config.hash_root_path)?;
+    let relative_path = diff_normalized_paths(&css_file, &hash_root)?;
+    let hash_str = make_hash(&relative_path, config.hash_len)?;
 
     let css_file_contents = fs::read_to_string(css_file)?;
 
