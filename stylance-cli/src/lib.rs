@@ -3,48 +3,46 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{BufWriter, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::bail;
 pub use stylance_core::Config;
-use stylance_core::ModifyCssResult;
+use stylance_core::{path_utils, ModifyCssResult};
 use walkdir::WalkDir;
 
-pub fn run(manifest_dir: &Path, config: &Config) -> anyhow::Result<()> {
+pub fn run(config: &Config) -> anyhow::Result<()> {
     println!("Running stylance");
-    run_silent(manifest_dir, config, |file_path| {
-        println!("{}", file_path.display())
-    })
+    run_silent(config, |file_path| println!("{}", file_path.display()))
 }
 
 pub fn run_silent(
-    manifest_dir: &Path,
     config: &Config,
     mut file_visit_callback: impl FnMut(&Path),
 ) -> anyhow::Result<()> {
-    let hash_root = stylance_core::resolve_hash_root(manifest_dir, config);
+    let modified_css_files = load_and_modify_crate(config)?;
+
+    for f in &modified_css_files {
+        file_visit_callback(&f.path);
+    }
+
+    write_output(&[(config, &modified_css_files)])
+}
+
+pub fn load_and_modify_crate(config: &Config) -> anyhow::Result<Vec<ModifyCssResult>> {
     let mut modified_css_files = Vec::new();
 
-    for folder in config.folders() {
-        for (entry, meta) in WalkDir::new(manifest_dir.join(folder))
+    for folder in config.folders.iter() {
+        for (entry, meta) in WalkDir::new(folder)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))
         {
             if meta.is_file() {
                 let path_str = entry.path().to_string_lossy();
-                if config
-                    .extensions()
-                    .iter()
-                    .any(|ext| path_str.ends_with(ext))
-                {
-                    file_visit_callback(entry.path());
-                    modified_css_files.push(stylance_core::load_and_modify_css(
-                        &hash_root,
-                        entry.path(),
-                        config,
-                    )?);
+                if config.extensions.iter().any(|ext| path_str.ends_with(ext)) {
+                    modified_css_files
+                        .push(stylance_core::load_and_modify_css(entry.path(), config)?);
                 }
             }
         }
@@ -64,103 +62,120 @@ pub fn run_silent(
         }
     }
 
-    {
-        // sort by (filename, path)
-        fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &String) {
-            (
-                a.path.file_name().expect("should be a file"),
-                &a.normalized_path_str,
-            )
+    Ok(modified_css_files)
+}
+
+pub fn write_output(crates: &[(&Config, &[ModifyCssResult])]) -> anyhow::Result<()> {
+    let mut output_files = HashMap::<PathBuf, Vec<Cow<str>>>::new();
+
+    // Clear the output dir of all crates.
+    for &(config, _) in crates {
+        if let Some(output_dir) = &config.output_dir {
+            let output_dir = output_dir.join("stylance");
+            fs::create_dir_all(&output_dir)?;
+
+            let entries = fs::read_dir(&output_dir)?;
+
+            for entry in entries {
+                let entry = entry?;
+                let file_type = entry.file_type()?;
+
+                if file_type.is_file() {
+                    fs::remove_file(entry.path())?;
+                }
+            }
         }
-        modified_css_files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
     }
 
-    if let Some(output_file) = &config.output_file {
+    for &(config, files) in crates {
+        let mut files = files.iter().collect::<Vec<_>>();
+        {
+            // sort by (filename, path)
+            fn key(a: &ModifyCssResult) -> (&std::ffi::OsStr, &Path) {
+                (
+                    a.path.file_name().expect("should be a file"),
+                    &a.relative_path,
+                )
+            }
+            files.sort_unstable_by(|a, b| key(a).cmp(&key(b)));
+        }
+
+        if let Some(output_file) = &config.output_file {
+            let outputs = output_files
+                .entry(path_utils::normalize(output_file)?)
+                .or_default();
+
+            if let Some(scss_prelude) = &config.scss_prelude {
+                if output_file
+                    .extension()
+                    .filter(|ext| ext.to_string_lossy() == "scss")
+                    .is_some()
+                {
+                    outputs.push(Cow::Borrowed(scss_prelude.as_str()));
+                }
+            }
+
+            outputs.extend(files.iter().map(|f| Cow::Borrowed(f.contents.as_str())));
+        }
+
+        if let Some(output_dir) = &config.output_dir {
+            let output_dir = output_dir.join("stylance");
+            let mut new_files = Vec::new();
+            for modified_css in files {
+                let extension = modified_css
+                    .path
+                    .extension()
+                    .map(|e| e.to_string_lossy())
+                    .filter(|e| e == "css")
+                    .unwrap_or(Cow::from("scss"));
+
+                let new_file_name = format!(
+                    "{}-{}.{extension}",
+                    modified_css
+                        .path
+                        .file_stem()
+                        .expect("This path should be a file")
+                        .to_string_lossy(),
+                    modified_css.hash
+                );
+
+                new_files.push(new_file_name.clone());
+
+                let file_path = output_dir.join(new_file_name);
+                let mut file = BufWriter::new(File::create(file_path)?);
+
+                if let Some(scss_prelude) = &config.scss_prelude {
+                    if extension == "scss" {
+                        file.write_all(scss_prelude.as_bytes())?;
+                        file.write_all(b"\n\n")?;
+                    }
+                }
+
+                file.write_all(modified_css.contents.as_bytes())?;
+            }
+
+            let index_path = output_dir.join("_index.scss");
+
+            let outputs = output_files
+                .entry(path_utils::normalize(index_path)?)
+                .or_default();
+            outputs.push(Cow::Owned(
+                new_files
+                    .iter()
+                    .map(|f| format!("@use \"{f}\";"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ));
+        }
+    }
+
+    for (output_file, files) in output_files {
         if let Some(parent) = output_file.parent() {
             fs::create_dir_all(parent)?;
         }
 
         let mut file = BufWriter::new(File::create(output_file)?);
-
-        if let Some(scss_prelude) = &config.scss_prelude {
-            if output_file
-                .extension()
-                .filter(|ext| ext.to_string_lossy() == "scss")
-                .is_some()
-            {
-                file.write_all(scss_prelude.as_bytes())?;
-                file.write_all(b"\n\n")?;
-            }
-        }
-
-        file.write_all(
-            modified_css_files
-                .iter()
-                .map(|r| r.contents.as_ref())
-                .collect::<Vec<_>>()
-                .join("\n\n")
-                .as_bytes(),
-        )?;
-    }
-
-    if let Some(output_dir) = &config.output_dir {
-        let output_dir = output_dir.join("stylance");
-        fs::create_dir_all(&output_dir)?;
-
-        let entries = fs::read_dir(&output_dir)?;
-
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-
-            if file_type.is_file() {
-                fs::remove_file(entry.path())?;
-            }
-        }
-
-        let mut new_files = Vec::new();
-        for modified_css in modified_css_files {
-            let extension = modified_css
-                .path
-                .extension()
-                .map(|e| e.to_string_lossy())
-                .filter(|e| e == "css")
-                .unwrap_or(Cow::from("scss"));
-
-            let new_file_name = format!(
-                "{}-{}.{extension}",
-                modified_css
-                    .path
-                    .file_stem()
-                    .expect("This path should be a file")
-                    .to_string_lossy(),
-                modified_css.hash
-            );
-
-            new_files.push(new_file_name.clone());
-
-            let file_path = output_dir.join(new_file_name);
-            let mut file = BufWriter::new(File::create(file_path)?);
-
-            if let Some(scss_prelude) = &config.scss_prelude {
-                if extension == "scss" {
-                    file.write_all(scss_prelude.as_bytes())?;
-                    file.write_all(b"\n\n")?;
-                }
-            }
-
-            file.write_all(modified_css.contents.as_bytes())?;
-        }
-
-        let mut file = File::create(output_dir.join("_index.scss"))?;
-        file.write_all(
-            new_files
-                .iter()
-                .map(|f| format!("@use \"{f}\";\n"))
-                .collect::<Vec<_>>()
-                .join("")
-                .as_bytes(),
-        )?;
+        file.write_all(files.join("\n\n").as_bytes())?;
     }
 
     Ok(())
@@ -173,6 +188,7 @@ mod tests {
     fn test_symlinked_folder() {
         use super::*;
         use stylance_core::Config;
+        use stylance_core::PartialConfig;
 
         use std::os::unix::fs::symlink;
 
@@ -192,14 +208,18 @@ mod tests {
         // Create symlink: my_app/views -> ../external
         symlink(&external_dir, manifest_dir.join("views")).unwrap();
 
-        let config = Config {
-            output_file: Some(base.join("out.css")),
-            folders: Some(vec![std::path::PathBuf::from("./views/")]),
-            ..Config::default()
-        };
+        let config = Config::from_partials(
+            manifest_dir,
+            PartialConfig {
+                output_file: Some(base.join("out.css")),
+                folders: Some(vec![std::path::PathBuf::from("./views/")]),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
 
-        run_silent(&manifest_dir, &config, |_| {})
-            .expect("run_silent should succeed with symlinked folder");
+        run_silent(&config, |_| {}).expect("run_silent should succeed with symlinked folder");
 
         let output = fs::read_to_string(base.join("out.css")).expect("output file should exist");
 

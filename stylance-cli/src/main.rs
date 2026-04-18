@@ -1,20 +1,20 @@
-use anyhow::bail;
 use std::{
     collections::HashMap,
+    env,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
-use stylance_cli::run;
-use stylance_core::{load_config, Config};
+use stylance_cli::{load_and_modify_crate, write_output};
+use stylance_core::{path_utils, Config, ModifyCssResult};
 
 use clap::Parser;
 use notify::{Event, RecursiveMode, Watcher};
 use tokio::{
     sync::mpsc,
-    task::{spawn_blocking, JoinSet},
+    task::JoinSet,
+    time::{sleep, Instant},
 };
-use tokio_stream::{Stream, StreamExt};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
@@ -43,56 +43,27 @@ struct Cli {
     watch: bool,
 }
 
-struct RunParams {
-    manifest_dir: PathBuf,
-    config: Config,
-}
-
-fn check_output_collisions(all_params: &[RunParams]) -> anyhow::Result<()> {
-    let mut seen_files: HashMap<PathBuf, &Path> = HashMap::new();
-    let mut seen_dirs: HashMap<PathBuf, &Path> = HashMap::new();
-
-    for params in all_params {
-        if let Some(output_file) = &params.config.output_file {
-            if let Some(prev) = seen_files.insert(output_file.clone(), &params.manifest_dir) {
-                bail!(
-                    "Multiple crates share the same output_file: {}\n  - {}\n  - {}",
-                    output_file.display(),
-                    prev.display(),
-                    params.manifest_dir.display(),
-                );
-            }
-        }
-        if let Some(output_dir) = &params.config.output_dir {
-            if let Some(prev) = seen_dirs.insert(output_dir.clone(), &params.manifest_dir) {
-                bail!(
-                    "Multiple crates share the same output_dir: {}\n  - {}\n  - {}",
-                    output_dir.display(),
-                    prev.display(),
-                    params.manifest_dir.display(),
-                );
-            }
-        }
-    }
-
-    Ok(())
-}
+// We are using tokio mainly for the ease of implementing debouncing and cancellation.
+// It is alright to call io blocking functions in async functions of this app.
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let mut all_params = Vec::new();
+    let mut crate_states = Vec::new();
     for manifest_dir in &cli.manifest_dirs {
-        let params = make_run_params(&cli, manifest_dir).await?;
-        all_params.push(params);
+        let config = Arc::new(load_config(&cli, manifest_dir)?);
+        let files = load_and_modify_crate(&config)?;
+        print_files(&files)?;
+        crate_states.push(CrateState { config, files });
     }
 
-    check_output_collisions(&all_params)?;
-
-    for params in &all_params {
-        run(&params.manifest_dir, &params.config)?;
-    }
+    write_output(
+        &crate_states
+            .iter()
+            .map(|c| (&*c.config, c.files.as_slice()))
+            .collect::<Vec<_>>(),
+    )?;
 
     if cli.watch {
         let cli = Arc::new(cli);
@@ -100,10 +71,15 @@ async fn main() -> anyhow::Result<()> {
         // Spawn one independent watch task per manifest dir, as each crate
         // has its own config, folders, and output.
         let mut set = JoinSet::new();
-        for params in all_params {
+
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        for (crate_idx, CrateState { config, .. }) in crate_states.iter().enumerate() {
             let cli = cli.clone();
-            set.spawn(watch_single(cli, params));
+            set.spawn(watch_single(cli, config.clone(), crate_idx, tx.clone()));
         }
+
+        set.spawn(watch_crates(crate_states, rx));
 
         // If any watcher ends (only happens on error), abort the rest and exit.
         if let Some(result) = set.join_next().await {
@@ -115,31 +91,31 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn make_run_params(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<RunParams> {
-    let manifest_dir_buf = manifest_dir.to_path_buf();
-    let mut config = spawn_blocking(move || load_config(&manifest_dir_buf)).await??;
-
-    config.output_file = cli
-        .output_file
-        .clone()
-        .or_else(|| config.output_file.as_ref().map(|p| manifest_dir.join(p)));
-
-    config.output_dir = cli
-        .output_dir
-        .clone()
-        .or_else(|| config.output_dir.as_ref().map(|p| manifest_dir.join(p)));
-
-    if !cli.folder.is_empty() {
-        config.folders = Some(cli.folder.clone());
+fn print_files(files: &[ModifyCssResult]) -> anyhow::Result<()> {
+    let cwd = env::current_dir()?;
+    for file in files {
+        println!(
+            "{}",
+            path_utils::diff_normalized_paths(&file.path, &cwd)?.to_string_lossy()
+        );
     }
-
-    Ok(RunParams {
-        manifest_dir: manifest_dir.to_path_buf(),
-        config,
-    })
+    Ok(())
 }
 
-fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
+fn load_config(cli: &Cli, manifest_dir: &Path) -> anyhow::Result<Config> {
+    let mut config = Config::load(manifest_dir.to_owned())?;
+
+    config.output_file = cli.output_file.clone().or(config.output_file);
+    config.output_dir = cli.output_dir.clone().or(config.output_dir);
+
+    if !cli.folder.is_empty() {
+        config.folders = cli.folder.iter().map(|p| manifest_dir.join(p)).collect();
+    }
+
+    Ok(config)
+}
+
+fn watch_files(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
@@ -157,7 +133,9 @@ fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
         }
     })?;
 
-    watcher.watch(path, RecursiveMode::NonRecursive)?;
+    for path in paths {
+        watcher.watch(path, RecursiveMode::NonRecursive)?;
+    }
 
     tokio::spawn(async move {
         events_tx.closed().await;
@@ -167,7 +145,7 @@ fn watch_file(path: &Path) -> anyhow::Result<mpsc::UnboundedReceiver<()>> {
     Ok(events_rx)
 }
 
-fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver<PathBuf>> {
+fn watch_folders(paths: &[PathBuf]) -> anyhow::Result<mpsc::UnboundedReceiver<PathBuf>> {
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut watcher = notify::recommended_watcher({
         let events_tx = events_tx.clone();
@@ -201,88 +179,108 @@ fn watch_folders(paths: &Vec<PathBuf>) -> anyhow::Result<mpsc::UnboundedReceiver
     Ok(events_rx)
 }
 
-async fn debounced_next(s: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> {
-    s.next().await;
-
-    loop {
-        let result = tokio::time::timeout(Duration::from_millis(50), s.next()).await;
-        match result {
-            Ok(Some(_)) => {}
-            Ok(None) => return None,
-            Err(_) => return Some(()),
-        }
-    }
+struct CrateState {
+    config: Arc<Config>,
+    files: Vec<ModifyCssResult>,
 }
 
-/// Watch a single manifest dir independently. Each crate gets its own
-/// watcher, config reload, and run loop — a change in one crate only
-/// triggers a rebuild for that crate.
-async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()> {
-    let manifest_dir = run_params.manifest_dir.clone();
-    let (run_params_tx, mut run_params) = tokio::sync::watch::channel(Arc::new(run_params));
+const DEBOUNCE_DURATION: Duration = Duration::from_millis(50);
 
-    // Watch Cargo.toml to update the current run_params.
-    let cargo_toml_events = watch_file(&manifest_dir.join("Cargo.toml").canonicalize()?)?;
-    let manifest_dir_clone = manifest_dir.clone();
-    tokio::spawn(async move {
-        let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(cargo_toml_events);
-        while debounced_next(&mut stream).await.is_some() {
-            match make_run_params(&cli, &manifest_dir_clone).await {
-                Ok(new_params) => {
-                    if run_params_tx.send(Arc::new(new_params)).is_err() {
-                        return;
+async fn watch_crates(
+    mut states: Vec<CrateState>,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<(usize, Arc<Config>)>,
+) -> anyhow::Result<()> {
+    while let Some((idx, config)) = rx.recv().await {
+        // Debounce logic:
+        // Accumulate reeived until enought time elapses since the last recv.
+        // If the update is for the same crate (idx) we overwrite the config.
+
+        let mut received = HashMap::from([(idx, config)]);
+        let timer = sleep(DEBOUNCE_DURATION);
+        tokio::pin!(timer);
+
+        loop {
+            tokio::select! {
+                // Wait for a change
+                res = rx.recv() => {
+                    match res {
+                        Some((idx, config)) => {
+                            received.insert(idx, config);
+                        }
+                        None => {
+                            return Ok(());
+                        }
+                    }
+                    timer.as_mut().reset(Instant::now() + DEBOUNCE_DURATION);
+                }
+
+                // Timer completes
+                _ = &mut timer => {
+                    break;
+                }
+            }
+        }
+
+        // Debounce ended, received contains 1 or more crates.
+
+        for (idx, config) in received {
+            match load_and_modify_crate(&config) {
+                Ok(modified) => {
+                    print_files(&modified)?;
+                    states[idx] = CrateState {
+                        config: config.clone(),
+                        files: modified,
                     };
                 }
                 Err(e) => {
                     eprintln!("{e}");
                 }
-            }
+            };
         }
-    });
 
-    // Wait for run_events to run the stylance process.
-    let (run_events_tx, run_events) = mpsc::channel(1);
-    tokio::spawn({
-        let run_params = run_params.clone();
-        async move {
-            let mut stream = tokio_stream::wrappers::ReceiverStream::new(run_events);
-            while (debounced_next(&mut stream).await).is_some() {
-                let run_params = run_params.borrow().clone();
-                if let Ok(Err(e)) =
-                    spawn_blocking(move || run(&run_params.manifest_dir, &run_params.config)).await
-                {
-                    eprintln!("{e}");
-                }
-            }
-        }
-    });
-
-    loop {
-        // Watch the folders from the current run_params
-        let mut events = watch_folders(
-            &run_params
-                .borrow()
-                .config
-                .folders()
+        write_output(
+            &states
                 .iter()
-                .map(|f| manifest_dir.join(f))
-                .collect(),
+                .map(|c| (&*c.config, c.files.as_slice()))
+                .collect::<Vec<_>>(),
         )?;
+    }
+
+    Ok(())
+}
+
+/// Watch a single crate for file changes, sends the config over build_tx to signal it needs to rebuild.
+///
+/// Is in charge of reloading the config when it changes.
+async fn watch_single(
+    cli: Arc<Cli>,
+    mut config: Arc<Config>,
+    crate_idx: usize,
+    build_tx: mpsc::UnboundedSender<(usize, Arc<Config>)>,
+) -> anyhow::Result<()> {
+    loop {
+        // Watch Cargo.toml to update the current config.
+        let mut watched_files = vec![config.manifest_dir.join("Cargo.toml")];
+
+        // Also watch workspace Cargo.toml if the config inherits from it.
+        if let Some(workspace_dir) = &config.workspace_dir {
+            watched_files.push(workspace_dir.join("Cargo.toml"))
+        }
+
+        let mut cargo_toml_events = watch_files(&watched_files)?;
+
+        // Watch the folders from the current config
+        let mut folder_events = watch_folders(&config.folders)?;
 
         // With the events from the watched folder trigger run_events if they match the extensions of the config.
-        let watch_folders = {
-            let run_params = run_params.borrow().clone();
-            let run_events_tx = run_events_tx.clone();
+        let watch_folders_fut = {
+            let build_tx = build_tx.clone();
+            let config = config.clone();
             async move {
-                while let Some(path) = events.recv().await {
+                while let Some(path) = folder_events.recv().await {
                     let str_path = path.to_string_lossy();
-                    if run_params
-                        .config
-                        .extensions()
-                        .iter()
-                        .any(|ext| str_path.ends_with(ext))
-                    {
-                        let _ = run_events_tx.try_send(());
+                    if config.extensions.iter().any(|ext| str_path.ends_with(ext)) {
+                        let _ = build_tx.send((crate_idx, config));
                         break;
                     }
                 }
@@ -291,10 +289,23 @@ async fn watch_single(cli: Arc<Cli>, run_params: RunParams) -> anyhow::Result<()
 
         // Run until the config has changed
         tokio::select! {
-            _ = watch_folders => {},
-            _ = run_params.changed() => {
-                let _ = run_events_tx.try_send(()); // Config changed so lets trigger a run
-            },
+            _ = watch_folders_fut => {},
+            _ = cargo_toml_events.recv() => {},
         }
+
+        // The cargo_toml_watcher triggered so wait a bit and reload the config.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        match load_config(&cli, &config.manifest_dir) {
+            Ok(new_config) => {
+                config = Arc::new(new_config);
+            }
+            Err(e) => {
+                eprintln!("{e}")
+            }
+        }
+
+        // trigger a rebuild
+        build_tx.send((crate_idx, config.clone()))?;
     }
 }

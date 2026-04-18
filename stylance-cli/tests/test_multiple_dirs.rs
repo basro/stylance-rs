@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use stylance_cli::{run_silent, Config};
-use stylance_core::load_config;
+use stylance_core::PartialConfig;
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -12,10 +12,10 @@ fn fixtures_dir() -> PathBuf {
 #[test]
 fn test_single_manifest_dir() {
     let crate1 = fixtures_dir().join("crate1");
-    let config = load_config(&crate1).unwrap();
+    let config = Config::load(crate1.to_path_buf()).unwrap();
 
     let mut visited = Vec::new();
-    run_silent(&crate1, &config, |path| {
+    run_silent(&config, |path| {
         visited.push(path.to_owned());
     })
     .unwrap();
@@ -30,13 +30,13 @@ fn test_multiple_manifest_dirs() {
     let crate2 = fixtures_dir().join("crate2");
 
     let configs: Vec<(PathBuf, Config)> = vec![
-        (crate1.clone(), load_config(&crate1).unwrap()),
-        (crate2.clone(), load_config(&crate2).unwrap()),
+        (crate1.clone(), Config::load(crate1).unwrap()),
+        (crate2.clone(), Config::load(crate2).unwrap()),
     ];
 
     let mut all_visited = Vec::new();
-    for (manifest_dir, config) in &configs {
-        run_silent(manifest_dir, config, |path| {
+    for (_, config) in &configs {
+        run_silent(config, |path| {
             all_visited.push(path.to_owned());
         })
         .unwrap();
@@ -63,14 +63,14 @@ fn test_multiple_dirs_produce_distinct_output() {
     let output1 = tmpdir.join("crate1.css");
     let output2 = tmpdir.join("crate2.css");
 
-    let mut config1 = load_config(&crate1).unwrap();
+    let mut config1 = Config::load(crate1).unwrap();
     config1.output_file = Some(output1.clone());
 
-    let mut config2 = load_config(&crate2).unwrap();
+    let mut config2 = Config::load(crate2).unwrap();
     config2.output_file = Some(output2.clone());
 
-    run_silent(&crate1, &config1, |_| {}).unwrap();
-    run_silent(&crate2, &config2, |_| {}).unwrap();
+    run_silent(&config1, |_| {}).unwrap();
+    run_silent(&config2, |_| {}).unwrap();
 
     let content1 = std::fs::read_to_string(&output1).unwrap();
     let content2 = std::fs::read_to_string(&output2).unwrap();
@@ -246,19 +246,25 @@ workspace = true
     )
     .unwrap();
 
-    let config_a = load_config(&crate_a).unwrap();
-    let config_b = load_config(&crate_b).unwrap();
+    let config_a = Config::load(crate_a).unwrap();
+    let config_b = Config::load(crate_b).unwrap();
 
     // Workspace config should be inherited: hash_len = 5
-    assert_eq!(config_a.hash_len(), 5);
-    assert_eq!(config_b.hash_len(), 5);
+    assert_eq!(config_a.hash_len, 5);
+    assert_eq!(config_b.hash_len, 5);
 
     // extensions should come from workspace
-    assert_eq!(config_a.extensions(), &[".module.css"]);
+    assert_eq!(config_a.extensions, &[".module.css"]);
 
-    // hash_root_path should be implicitly set to workspace root
-    assert!(config_a.hash_root_path.is_some());
-    assert!(config_b.hash_root_path.is_some());
+    // hash_root_path should have resolved to the workspace directory
+    assert_eq!(
+        config_a.hash_root_path.canonicalize().unwrap(),
+        tmpdir.canonicalize().unwrap()
+    );
+    assert_eq!(
+        config_b.hash_root_path.canonicalize().unwrap(),
+        tmpdir.canonicalize().unwrap()
+    );
 
     // Same relative CSS path in both crates should produce different hashes
     let output_a = tmpdir.join("a.css");
@@ -269,8 +275,8 @@ workspace = true
     let mut config_b = config_b;
     config_b.output_file = Some(output_b.clone());
 
-    run_silent(&crate_a, &config_a, |_| {}).unwrap();
-    run_silent(&crate_b, &config_b, |_| {}).unwrap();
+    run_silent(&config_a, |_| {}).unwrap();
+    run_silent(&config_b, |_| {}).unwrap();
 
     let content_a = std::fs::read_to_string(&output_a).unwrap();
     let content_b = std::fs::read_to_string(&output_b).unwrap();
@@ -321,8 +327,8 @@ hash_len = 10
     )
     .unwrap();
 
-    let config = load_config(&crate_dir).unwrap();
-    assert_eq!(config.hash_len(), 10);
+    let config = Config::load(crate_dir).unwrap();
+    assert_eq!(config.hash_len, 10);
 
     let _ = std::fs::remove_dir_all(&tmpdir);
 }
@@ -358,10 +364,13 @@ version = "0.1.0"
     )
     .unwrap();
 
-    let config = load_config(&crate_dir).unwrap();
+    let config = Config::load(crate_dir.clone()).unwrap();
     // Should get the default hash_len (7), not the workspace one (5)
-    assert_eq!(config.hash_len(), 7);
-    assert!(config.hash_root_path.is_none());
+    assert_eq!(config.hash_len, 7);
+    assert_eq!(
+        config.hash_root_path.canonicalize().unwrap(),
+        crate_dir.canonicalize().unwrap()
+    );
 
     let _ = std::fs::remove_dir_all(&tmpdir);
 }
@@ -375,17 +384,17 @@ fn test_hash_root_path_changes_hash() {
 
     // Run without hash_root_path
     let output_default = tmpdir.join("default.css");
-    let mut config = load_config(&crate1).unwrap();
+    let mut config = Config::load(crate1.clone()).unwrap();
     config.output_file = Some(output_default.clone());
-    run_silent(&crate1, &config, |_| {}).unwrap();
+    run_silent(&config, |_| {}).unwrap();
     let content_default = std::fs::read_to_string(&output_default).unwrap();
 
     // Run with hash_root_path pointing to the fixtures dir (parent of crate1)
     let output_custom = tmpdir.join("custom.css");
-    let mut config2 = load_config(&crate1).unwrap();
+    let mut config2 = Config::load(crate1).unwrap();
     config2.output_file = Some(output_custom.clone());
-    config2.hash_root_path = Some(PathBuf::from("../"));
-    run_silent(&crate1, &config2, |_| {}).unwrap();
+    config2.hash_root_path = PathBuf::from("../");
+    run_silent(&config2, |_| {}).unwrap();
     let content_custom = std::fs::read_to_string(&output_custom).unwrap();
 
     // Both should contain transformed class names
@@ -419,18 +428,28 @@ fn test_hash_root_path_makes_same_filename_unique() {
     std::fs::write(crate_b.join("src/style.module.css"), css_content).unwrap();
 
     // Without hash_root_path: both crates produce the same hash
-    let config_no_root = Config {
-        output_file: Some(tmpdir.join("a_default.css")),
-        ..Config::default()
-    };
-    run_silent(&crate_a, &config_no_root, |_| {}).unwrap();
+    let config_no_root = Config::from_partials(
+        crate_a.clone(),
+        PartialConfig {
+            output_file: Some(tmpdir.join("a_default.css")),
+            ..PartialConfig::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_no_root, |_| {}).unwrap();
     let out_a_default = std::fs::read_to_string(tmpdir.join("a_default.css")).unwrap();
 
-    let config_no_root_b = Config {
-        output_file: Some(tmpdir.join("b_default.css")),
-        ..Config::default()
-    };
-    run_silent(&crate_b, &config_no_root_b, |_| {}).unwrap();
+    let config_no_root_b = Config::from_partials(
+        crate_b.clone(),
+        PartialConfig {
+            output_file: Some(tmpdir.join("b_default.css")),
+            ..PartialConfig::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_no_root_b, |_| {}).unwrap();
     let out_b_default = std::fs::read_to_string(tmpdir.join("b_default.css")).unwrap();
 
     assert_eq!(
@@ -439,20 +458,30 @@ fn test_hash_root_path_makes_same_filename_unique() {
     );
 
     // With hash_root_path pointing to the common parent: hashes should differ
-    let config_a = Config {
-        output_file: Some(tmpdir.join("a_rooted.css")),
-        hash_root_path: Some(PathBuf::from("../")),
-        ..Config::default()
-    };
-    run_silent(&crate_a, &config_a, |_| {}).unwrap();
+    let config_a = Config::from_partials(
+        crate_a,
+        PartialConfig {
+            output_file: Some(tmpdir.join("a_rooted.css")),
+            hash_root_path: Some(PathBuf::from("../")),
+            ..Default::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_a, |_| {}).unwrap();
     let out_a_rooted = std::fs::read_to_string(tmpdir.join("a_rooted.css")).unwrap();
 
-    let config_b = Config {
-        output_file: Some(tmpdir.join("b_rooted.css")),
-        hash_root_path: Some(PathBuf::from("../")),
-        ..Config::default()
-    };
-    run_silent(&crate_b, &config_b, |_| {}).unwrap();
+    let config_b = Config::from_partials(
+        crate_b,
+        PartialConfig {
+            output_file: Some(tmpdir.join("b_rooted.css")),
+            hash_root_path: Some(PathBuf::from("../")),
+            ..Default::default()
+        },
+        None,
+    )
+    .unwrap();
+    run_silent(&config_b, |_| {}).unwrap();
     let out_b_rooted = std::fs::read_to_string(tmpdir.join("b_rooted.css")).unwrap();
 
     assert_ne!(
