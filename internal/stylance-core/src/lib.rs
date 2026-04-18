@@ -1,6 +1,7 @@
 mod class_name_pattern;
 mod config;
 mod parse;
+mod path_utils;
 
 use std::{
     borrow::Cow,
@@ -9,11 +10,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use parse::{CssFragment, Global};
 use siphasher::sip::SipHasher13;
 
 pub use crate::config::{Config, PartialConfig};
+use crate::path_utils::normalized_relative_path;
 
 pub fn hash_string(input: &str) -> u64 {
     let mut hasher = SipHasher13::new();
@@ -24,45 +26,6 @@ pub fn hash_string(input: &str) -> u64 {
 pub struct Class {
     pub original_name: String,
     pub hashed_name: String,
-}
-
-/// Normalize a path by resolving `.` and `..` components and making it
-/// absolute, without following symlinks. This preserves logical paths through
-/// symlinked directories.
-fn normalize_path(path: &Path) -> anyhow::Result<PathBuf> {
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(path)
-    };
-
-    let mut components = Vec::new();
-    for component in absolute.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                components.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => components.push(other),
-        }
-    }
-    Ok(components.iter().collect())
-}
-
-fn normalized_relative_path(base: &Path, subpath: &Path) -> anyhow::Result<String> {
-    let base = normalize_path(base)?;
-    let subpath = normalize_path(subpath)?;
-
-    let relative_path_str: String = subpath
-        .strip_prefix(base)
-        .context("css file should be inside the hash root path")?
-        .to_string_lossy()
-        .into();
-
-    #[cfg(target_os = "windows")]
-    let relative_path_str = relative_path_str.replace('\\', "/");
-
-    Ok(relative_path_str)
 }
 
 fn make_hash(hash_root: &Path, css_file: &Path, hash_len: usize) -> anyhow::Result<String> {
