@@ -4,12 +4,12 @@ Stylance is a library and cli tool for working with scoped CSS in rust.
 
 **Features:**
 
--   Import hashed class names from css files into your rust code as string constants.
-    -   Trying to use a class name that doesn't exist in the css file becomes an error.
-    -   Unused class names become warnings.
--   Bundle your css module files into a single output css file with all the class names transformed to include a hash (by using stylance cli).
--   Class name hashes are deterministic and based on the relative path between the css file and your crate's manifest dir (where the Cargo.toml resides)
--   CSS Bundle generation is independent of the rust build process, allowing for blazingly fast iteration when modifying the contents of a css style rule.
+- Import hashed class names from css files into your rust code as string constants.
+  - Trying to use a class name that doesn't exist in the css file becomes an error.
+  - Unused class names become warnings.
+- Bundle your css module files into a single output css file with all the class names transformed to include a hash (by using stylance cli).
+- Class name hashes are deterministic and based on the relative path between the css file and your crate's manifest dir (where the Cargo.toml resides)
+- CSS Bundle generation is independent of the rust build process, allowing for blazingly fast iteration when modifying the contents of a css style rule.
 
 ## Usage
 
@@ -32,7 +32,7 @@ Then use the import_crate_style proc macro to read a css/scss file and bring the
 
 ```css
 .header {
-    background-color: red;
+  background-color: red;
 }
 ```
 
@@ -62,7 +62,7 @@ Sometimes you might want to target classnames that are defined globally and outs
 
 ```css
 .my_scoped_class :global(.paragraph) {
-    color: red;
+  color: red;
 }
 ```
 
@@ -70,7 +70,7 @@ this will transform to:
 
 ```css
 .my_scoped_class-f45126d .paragraph {
-    color: red;
+  color: red;
 }
 ```
 
@@ -116,7 +116,7 @@ Resulting `./bundled.scss`:
 
 ```css
 .header-f45126d {
-    background-color: red;
+  background-color: red;
 }
 ```
 
@@ -201,6 +201,19 @@ hash_len = 7
 # [hash] will be replaced with the hash of css module file path.
 # defaults to "[name]-[hash]"
 class_name_pattern = "my-project-[name]-[hash]"
+
+# hash_root_path
+# Specifies the base path that will be used when computing the relative paths
+# of css modules. (The relative paths are hashed to generate the module's hash)
+# [name] will be replaced with the original class name
+# [hash] will be replaced with the hash of css module file path.
+# defaults to "."
+hash_root_path = "../../"
+
+# workspace
+# Set to true to enable inheriting stylance configuration from the crate's
+# workspace Cargo.toml file [workspace.metadata.stylance]
+workspace = true
 ```
 
 ## Rust analyzer completion issues
