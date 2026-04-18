@@ -148,6 +148,43 @@ stylance --watch --output-file ./bundled.scss ./path/to/crate/dir/
 
 The stylance process will then watch any `.module.css` and `.module.scss` files for changes and automatically rebuild the output file.
 
+### Building multiple crates at once
+
+You can build multiple crates at once by passing more than one path as argument to stylance cli.
+
+```cli
+stylance . ./components/crate1 ./components/crate2 ./components/crate3
+```
+
+This can be more convenient than calling stylance once for each crate.
+
+It also works with the `--watch` option.
+
+```cli
+stylance --watch . ./components/crate1 ./components/crate2 ./components/crate3
+```
+
+#### Shared output files
+
+Apart from being more convenient, building multiple crates at once allows stylance to be smart about shared outputs.
+
+If you call stylance twice with the same output file, the output will be overwritten by the second call.
+
+```cli
+stylance ./crate1 --output_file out.css
+# out.css is overwritten here, crate1 output is lost
+stylance ./crate2 --output_file out.css
+```
+
+Calling stylance once with both crates as argument will properly concatenate the outputs into the file:
+
+```
+stylance ./crate1 ./crate2 --output_file out.css
+# out.css will combine both crate1 and crate2 outputs.
+```
+
+Shared `output_dir` is also supported.
+
 ## <a name="configuration"></a> Configuration
 
 Stylance configuration lives inside the Cargo.toml file of your crate.
@@ -212,9 +249,49 @@ hash_root_path = "../../"
 
 # workspace
 # Set to true to enable inheriting stylance configuration from the crate's
-# workspace Cargo.toml file [workspace.metadata.stylance]
+# Enabling it will also change the default hash_root_path to be the workspace's directory.
+# defaults to false
 workspace = true
 ```
+
+### Workspace configuration inheritance
+
+Enabling the `workspace` flag in the `[package.metadata.stylance]` section of your crate's `Cargo.toml` will cause stylance to find your crate's workspace Cargo.toml and look for configuration in `[workspace.metada.stylance]`.
+
+The workspace configuration settings are identical to the package configuration.
+
+Stylance will merge the workspace and package configurations, giving the settings in package priority.
+
+#### Example
+
+`/my_project/crate1/Cargo.toml`
+
+```toml
+# ...
+
+[package.metadata.stylance]
+workspace = true
+extensions = [".module.css"]
+```
+
+`/my_project/Cargo.toml`
+
+```toml
+# ...
+
+[workspace.metadata.stylance]
+extensions = [".module.scss", ".module.css"]
+output_file = "./out.css"
+hash_len = 8
+```
+
+Here the resulting stylance configuration for crate1 will be:
+
+- `extensions = [".module.css"]` Settings from crate1 are prioritized.
+- `output_file = "/myproject/out.css"` Output file is inherited but resolved relative to the `Cargo.toml` that defines it (in this case, the worskpace Cargo.toml)
+- `hash_len = 7` This is inherited from workspace
+- `hash_root_path = "/myproject/"` Because workspace is enable the hash root defaults to the workspace directory.
+- All other settings are their normal defaults
 
 ## Rust analyzer completion issues
 
