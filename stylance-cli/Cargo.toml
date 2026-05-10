@@ -30,6 +30,7 @@ tokio = { version = "1.52.1", features = [
 tokio-stream = { version = "0.1.18", optional = true }
 
 [dev-dependencies]
+pretty_assertions = "1.4.1"
 tempfile = "3.27.0"
 
 [[bin]]
