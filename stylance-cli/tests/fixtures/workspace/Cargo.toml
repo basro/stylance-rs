@@ -1,0 +1,3 @@
+
+[workspace.metadata.stylance]
+output_file = "output.css"
