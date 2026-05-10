@@ -29,6 +29,9 @@ tokio = { version = "1.52.1", features = [
 ], optional = true }
 tokio-stream = { version = "0.1.18", optional = true }
 
+[dev-dependencies]
+tempfile = "3.27.0"
+
 [[bin]]
 name = "stylance"
 path = "./src/main.rs"
