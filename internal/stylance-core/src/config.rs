@@ -7,7 +7,7 @@ use std::{
 use anyhow::{bail, Context};
 use serde::Deserialize;
 
-use crate::class_name_pattern::ClassNamePattern;
+use crate::{class_name_pattern::ClassNamePattern, path_utils::normalize};
 
 fn default_extensions() -> Vec<String> {
     vec![".module.css".to_owned(), ".module.scss".to_owned()]
@@ -91,6 +91,7 @@ impl Config {
     ) -> anyhow::Result<Self> {
         let (workspace_dir, ws_config) = match workspace {
             Some((workspace_dir, mut ws_config)) => {
+                println!("workspace dir: {:?}", workspace_dir);
                 // Absolutize workspace config paths against the workspace root
                 ws_config.hash_root_path = Some(
                     ws_config
@@ -187,9 +188,11 @@ fn find_workspace_root(
     manifest_dir: &Path,
     cargo_toml: CargoToml,
 ) -> anyhow::Result<(PathBuf, CargoToml)> {
+    let manifest_dir = normalize(manifest_dir)?;
+
     // The crate's own Cargo.toml has [workspace] — it is the workspace root
     if cargo_toml.workspace.is_some() {
-        return Ok((manifest_dir.to_path_buf(), cargo_toml));
+        return Ok((manifest_dir, cargo_toml));
     }
 
     // Check for explicit workspace path in [package] workspace = "path"
