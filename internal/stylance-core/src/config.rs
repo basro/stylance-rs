@@ -91,7 +91,6 @@ impl Config {
     ) -> anyhow::Result<Self> {
         let (workspace_dir, ws_config) = match workspace {
             Some((workspace_dir, mut ws_config)) => {
-                println!("workspace dir: {:?}", workspace_dir);
                 // Absolutize workspace config paths against the workspace root
                 ws_config.hash_root_path = Some(
                     ws_config
