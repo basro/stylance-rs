@@ -1,5 +1,10 @@
 # Stylance changelog
 
+## 0.8.1
+
+- Fixes workspace config inheritance bug where paths were incorrectly computed as relative.
+- Fixes test fixtures not being included in crates.io source package. [#37](https://github.com/basro/stylance-rs/issues/37)
+
 ## 0.8.0
 
 - Fixed support for symlinked folders [#28](https://github.com/basro/stylance-rs/pull/28)
