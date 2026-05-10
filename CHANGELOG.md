@@ -1,9 +1,13 @@
 # Stylance changelog
 
+## 0.8.2
+
+- Removes debugging println that was accidentally included in 0.8.1
+
 ## 0.8.1
 
-- Fixes workspace config inheritance bug where paths were incorrectly computed as relative.
-- Fixes test fixtures not being included in crates.io source package. [#37](https://github.com/basro/stylance-rs/issues/37)
+- Fixes workspace config inheritance bug where paths were incorrectly computed as relative
+- Fixes test fixtures not being included in crates.io source package [#37](https://github.com/basro/stylance-rs/issues/37)
 
 ## 0.8.0
 
