@@ -15,10 +15,10 @@ default = ["binary"]
 binary = ["clap", "notify", "tokio", "tokio-stream"]
 
 [dependencies]
-walkdir = "2.4.0"
 stylance-core = { workspace = true }
-anyhow = "1.0.79"
+anyhow = { workspace = true }
 
+walkdir = "2.4.0"
 clap = { version = "4.4.12", features = ["derive", "cargo"], optional = true }
 notify = { version = "8.2.0", optional = true }
 tokio = { version = "1.52.1", features = [
@@ -30,8 +30,8 @@ tokio = { version = "1.52.1", features = [
 tokio-stream = { version = "0.1.18", optional = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 pretty_assertions = "1.4.1"
-tempfile = "3.27.0"
 
 [[bin]]
 name = "stylance"

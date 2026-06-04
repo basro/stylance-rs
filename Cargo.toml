@@ -5,6 +5,8 @@ members = ["stylance", "stylance-cli", "internal/*"]
 [workspace.dependencies]
 stylance-core = { path = "./internal/stylance-core", version = "0.8.2" }
 stylance-macros = { path = "./internal/stylance-macros", version = "0.8.2" }
+anyhow = "1.0.79"
+tempfile = "3.27.0"
 
 [workspace.package]
 authors = ["Mario Carbajal"]
