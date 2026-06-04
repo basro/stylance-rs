@@ -233,3 +233,36 @@ fn find_workspace_root(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Check that Config::load supports parsing a multiline inline table
+    /// (introduced in TOML 1.1)
+    #[test]
+    fn toml_1_1_multiline_inline_table() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            r#"[package]
+name = "test-crate"
+version = "0.1.0"
+edition = "2021"
+metadata = {
+  stylance = { output_file = "output.css" }
+}
+"#,
+        )
+        .expect("write Cargo.toml");
+
+        let config = Config::load(dir.path().to_path_buf())
+            .expect("Config::load should succeed with TOML 1.1 multiline inline tables");
+
+        assert_eq!(
+            config.output_file,
+            Some(dir.path().join("output.css")),
+            "output_file should be parsed from the multiline inline table"
+        );
+    }
+}
