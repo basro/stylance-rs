@@ -12,7 +12,7 @@ description = "Cli tool for bundling stylance scoped CSS files."
 
 [features]
 default = ["binary"]
-binary = ["clap", "notify", "tokio", "tokio-stream"]
+binary = ["clap", "notify", "tokio"]
 
 [dependencies]
 stylance-core = { workspace = true }
@@ -27,7 +27,6 @@ tokio = { version = "1.52.1", features = [
 	"sync",
 	"time",
 ], optional = true }
-tokio-stream = { version = "0.1.18", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
