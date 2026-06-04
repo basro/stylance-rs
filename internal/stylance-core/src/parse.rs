@@ -27,16 +27,15 @@ pub fn parse_css(input: &str) -> Result<Vec<CssFragment<'_>>, ParseError<&str, C
     style_rule_block_contents.parse(input)
 }
 
-// TODO: this is most likely no longer needed in the new version of winnow
-pub fn recognize_repeat<'s, O>(
+pub fn take_repeat<'s, O>(
     range: impl Into<Range>,
     f: impl ModalParser<&'s str, O, ContextError>,
 ) -> impl ModalParser<&'s str, &'s str, ContextError> {
-    repeat(range, f).fold(|| (), |_, _| ()).take()
+    repeat(range, f).map(|()| ()).take()
 }
 
 fn ws<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
-    recognize_repeat(
+    take_repeat(
         0..,
         alt((
             line_comment,
@@ -97,14 +96,14 @@ fn global<'s>(input: &mut &'s str) -> ModalResult<Global<'s>> {
 
 fn string_dq<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
     let str_char = alt((none_of(['"']).void(), "\\\"".void()));
-    let str_chars = recognize_repeat(0.., str_char);
+    let str_chars = take_repeat(0.., str_char);
 
     preceded('"', cut_err(terminated(str_chars, '"'))).parse_next(input)
 }
 
 fn string_sq<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
     let str_char = alt((none_of(['\'']).void(), "\\'".void()));
-    let str_chars = recognize_repeat(0.., str_char);
+    let str_chars = take_repeat(0.., str_char);
 
     preceded('\'', cut_err(terminated(str_chars, '\''))).parse_next(input)
 }
@@ -119,7 +118,7 @@ pub fn stuff_till<'s>(
     range: impl Into<Range>,
     list: impl ContainsToken<char>,
 ) -> impl ModalParser<&'s str, &'s str, ContextError> {
-    recognize_repeat(
+    take_repeat(
         range,
         alt((
             string.void(),
@@ -230,7 +229,7 @@ fn at_rule<'s>(input: &mut &'s str) -> ModalResult<Vec<CssFragment<'s>>> {
 }
 
 fn unknown_block_contents<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
-    recognize_repeat(
+    take_repeat(
         0..,
         alt((
             stuff_till(1.., ('{', '}')).void(),
