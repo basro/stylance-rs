@@ -3,7 +3,7 @@ use winnow::{
     error::{ContextError, ParseError},
     stream::{AsChar, ContainsToken, Range},
     token::{none_of, one_of, take_till, take_until, take_while},
-    ModalResult, Parser,
+    ModalParser, ModalResult, Parser,
 };
 
 /// ```text
@@ -30,8 +30,8 @@ pub fn parse_css(input: &str) -> Result<Vec<CssFragment<'_>>, ParseError<&str, C
 // TODO: this is most likely no longer needed in the new version of winnow
 pub fn recognize_repeat<'s, O>(
     range: impl Into<Range>,
-    f: impl Parser<&'s str, O, ContextError>,
-) -> impl Parser<&'s str, &'s str, ContextError> {
+    f: impl ModalParser<&'s str, O, ContextError>,
+) -> impl ModalParser<&'s str, &'s str, ContextError> {
     repeat(range, f).fold(|| (), |_, _| ()).take()
 }
 
@@ -118,7 +118,7 @@ fn string<'s>(input: &mut &'s str) -> ModalResult<&'s str> {
 pub fn stuff_till<'s>(
     range: impl Into<Range>,
     list: impl ContainsToken<char>,
-) -> impl Parser<&'s str, &'s str, ContextError> {
+) -> impl ModalParser<&'s str, &'s str, ContextError> {
     recognize_repeat(
         range,
         alt((
