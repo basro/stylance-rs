@@ -56,9 +56,9 @@ mod parse {
         combinator::{alt, repeat},
         error::{ContextError, ParseError},
         token::take_till,
-        PResult, Parser,
+        ModalResult, Parser,
     };
-    fn fragment(input: &mut &str) -> PResult<Fragment> {
+    fn fragment(input: &mut &str) -> ModalResult<Fragment> {
         alt((
             "[name]".value(Fragment::Name),
             "[hash]".value(Fragment::Hash),
@@ -67,7 +67,7 @@ mod parse {
         .parse_next(input)
     }
 
-    fn pattern(input: &mut &str) -> PResult<Vec<Fragment>> {
+    fn pattern(input: &mut &str) -> ModalResult<Vec<Fragment>> {
         repeat(0.., fragment).parse_next(input)
     }
 

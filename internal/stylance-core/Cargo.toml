@@ -8,7 +8,7 @@ description = "Internal crate used by stylance"
 
 [dependencies]
 anyhow = "1.0.79"
-winnow = "0.5.31"
+winnow = "0.6.26"
 toml = "1"
 serde = { version = "1.0.194", features = ["derive"] }
 siphasher = "1.0.0"
