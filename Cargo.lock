@@ -488,14 +488,14 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "stylance"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "stylance-macros",
 ]
 
 [[package]]
 name = "stylance-cli"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "stylance-core"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "serde",
@@ -522,7 +522,7 @@ dependencies = [
 
 [[package]]
 name = "stylance-macros"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "proc-macro2",
