@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.8.3
+
+- Added support for toml 1.1 [#38](https://github.com/basro/stylance-rs/pull/38)
+
 ## 0.8.2
 
 - Removes debugging println that was accidentally included in 0.8.1
