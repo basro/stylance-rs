@@ -1,8 +1,8 @@
 use winnow::{
-    combinator::{alt, cut_err, delimited, fold_repeat, opt, peek, preceded, terminated},
+    combinator::{alt, cut_err, delimited, opt, peek, preceded, repeat, terminated},
     error::{ContextError, ParseError},
     stream::{AsChar, ContainsToken, Range},
-    token::{none_of, one_of, tag, take_till, take_until0, take_while},
+    token::{none_of, one_of, take_till, take_until, take_while},
     PResult, Parser,
 };
 
@@ -27,11 +27,12 @@ pub fn parse_css(input: &str) -> Result<Vec<CssFragment<'_>>, ParseError<&str, C
     style_rule_block_contents.parse(input)
 }
 
+// TODO: this is most likely no longer needed in the new version of winnow
 pub fn recognize_repeat<'s, O>(
     range: impl Into<Range>,
     f: impl Parser<&'s str, O, ContextError>,
 ) -> impl Parser<&'s str, &'s str, ContextError> {
-    fold_repeat(range, f, || (), |_, _| ()).recognize()
+    repeat(range, f).fold(|| (), |_, _| ()).recognize()
 }
 
 fn ws<'s>(input: &mut &'s str) -> PResult<&'s str> {
@@ -53,7 +54,7 @@ fn line_comment<'s>(input: &mut &'s str) -> PResult<&'s str> {
 }
 
 fn block_comment<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    ("/*", cut_err(terminated(take_until0("*/"), "*/")))
+    ("/*", cut_err(terminated(take_until(0.., "*/"), "*/")))
         .recognize()
         .parse_next(input)
 }
@@ -95,14 +96,14 @@ fn global<'s>(input: &mut &'s str) -> PResult<Global<'s>> {
 }
 
 fn string_dq<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    let str_char = alt((none_of(['"']).void(), tag("\\\"").void()));
+    let str_char = alt((none_of(['"']).void(), "\\\"".void()));
     let str_chars = recognize_repeat(0.., str_char);
 
     preceded('"', cut_err(terminated(str_chars, '"'))).parse_next(input)
 }
 
 fn string_sq<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    let str_char = alt((none_of(['\'']).void(), tag("\\'").void()));
+    let str_char = alt((none_of(['\'']).void(), "\\'".void()));
     let str_chars = recognize_repeat(0.., str_char);
 
     preceded('\'', cut_err(terminated(str_chars, '\''))).parse_next(input)
@@ -133,7 +134,7 @@ pub fn stuff_till<'s>(
 }
 
 fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
-    fold_repeat(
+    repeat(
         1..,
         alt((
             class.map(|c| Some(CssFragment::Class(c))),
@@ -141,14 +142,13 @@ fn selector<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
             ':'.map(|_| None),
             stuff_till(1.., ('.', ';', '{', '}', ':')).map(|_| None),
         )),
-        Vec::new,
-        |mut acc, item| {
-            if let Some(item) = item {
-                acc.push(item);
-            }
-            acc
-        },
     )
+    .fold(Vec::new, |mut acc, item| {
+        if let Some(item) = item {
+            acc.push(item);
+        }
+        acc
+    })
     .parse_next(input)
 }
 
@@ -176,16 +176,12 @@ fn style_rule_block_statement<'s>(input: &mut &'s str) -> PResult<Vec<CssFragmen
 }
 
 fn style_rule_block_contents<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
-    fold_repeat(
-        0..,
-        style_rule_block_statement,
-        Vec::new,
-        |mut acc, mut item| {
+    repeat(0.., style_rule_block_statement)
+        .fold(Vec::new, |mut acc, mut item| {
             acc.append(&mut item);
             acc
-        },
-    )
-    .parse_next(input)
+        })
+        .parse_next(input)
 }
 
 fn style_rule_block<'s>(input: &mut &'s str) -> PResult<Vec<CssFragment<'s>>> {
