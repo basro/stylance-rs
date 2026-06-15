@@ -96,13 +96,21 @@ import_crate_style!(#[deny(dead_code)] my_style, "src/component/card/card.module
 
 ## Stylance cli
 
-Install stylance cli:
+### Install
+
+Build from source
 
 ```cli
 cargo install stylance-cli
 ```
 
-Run stylance cli:
+Or download precompiled binaries using binstall
+
+```cli
+cargo binstall stylance-cli
+```
+
+### Run
 
 ```cli
 stylance ./path/to/crate/dir/ --output-file ./bundled.scss
