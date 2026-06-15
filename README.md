@@ -104,7 +104,7 @@ Build from source
 cargo install stylance-cli
 ```
 
-Or download precompiled binaries using binstall
+Or download precompiled binaries using [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)
 
 ```cli
 cargo binstall stylance-cli
