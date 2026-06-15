@@ -22,3 +22,7 @@ repository = "https://github.com/basro/stylance-rs"
 readme = "README.md"
 keywords = ["css", "css-modules", "scss", "web"]
 categories = ["web-programming"]
+
+[workspace.metadata.release]
+shared-version = "true"
+tag-name = "v{{version}}"
