@@ -1,5 +1,9 @@
 # Stylance changelog
 
+## 0.8.4
+
+- Added CI generated binaries for stylance-cli [#40](https://github.com/basro/stylance-rs/pull/40)
+
 ## 0.8.3
 
 - Added support for toml 1.1 [#38](https://github.com/basro/stylance-rs/pull/38)
