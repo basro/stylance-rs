@@ -8,6 +8,12 @@ stylance-macros = { path = "./internal/stylance-macros", version = "0.8.3" }
 anyhow = "1.0.79"
 tempfile = "3.27.0"
 
+[profile.dist]
+inherits = "release"
+lto = "fat"
+strip = true
+codegen-units = 1
+
 [workspace.package]
 authors = ["Mario Carbajal"]
 version = "0.8.3"
